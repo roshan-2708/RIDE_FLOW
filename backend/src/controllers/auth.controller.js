@@ -25,10 +25,38 @@ exports.register = async (req, res) => {
         });
 
         if (existUser) {
-            return res.status(409).json({
-                success: false,
-                message: 'User with this email or phone already exists'
-            });
+            if (!existUser.isEmailVerified) {
+                await prisma.otpCode.updateMany({
+                    where: { userId: existUser.id, purpose: 'REGISTER', isUsed: false },
+                    data: { isUsed: true }
+                });
+
+                const otp = generateOTP();
+                const expireOTP = getOTPExpiry();
+
+                await prisma.otpCode.create({
+                    data: {
+                        userId: existUser.id,
+                        code: otp,
+                        type: 'EMAIL',
+                        purpose: "REGISTER",
+                        expireAt: expireOTP
+                    }
+                });
+
+                await sendOTPEmail(email, existUser.name, otp, 'REGISTER');
+
+                return res.json({
+                    success: true,
+                    message: `Account pending verification. A new OTP has been sent to ${email}.`,
+                    userId: existUser.id
+                });
+            } else {
+                return res.status(409).json({
+                    success: false,
+                    message: 'User with this email or phone already exists'
+                });
+            }
         }
 
         const user = await prisma.user.create({
@@ -230,6 +258,73 @@ exports.getMe = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to get user profile',
+            error: error.message
+        });
+    }
+};
+
+exports.refreshToken = async (req, res) => {
+    try {
+        const { refreshToken } = req.body;
+
+        if (!refreshToken) {
+            return res.status(401).json({ success: false, message: 'Refresh Token required' });
+        }
+
+        const token = await verifyToken(refreshToken, process.env.JWT_REFRESH_SECRET);
+
+        if (!token) {
+            return res.status(403).json({ success: false, message: 'Invalid or expired refresh token' });
+        }
+
+        const user = await prisma.user.findUnique({
+            where: { id: token.userId }
+        })
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        const newAccessToken = generateAccessToken(user.id, user.role);
+        const newRefreshToken = generateRefreshToken(user.id);
+
+        res.json({
+            success: true,
+            message: 'Tokens refreshed successfully 🎉',
+            tokens: {
+                accessToken: newAccessToken,
+                refreshToken: newRefreshToken
+            }
+        });
+
+    } catch (error) {
+        console.error("refresh token controller error : ", error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Internal Server Issue',
+            error: error.message
+        });
+    }
+};
+
+exports.logout = async (req, res) => {
+    try {
+        const userId = req.userId;
+
+        await prisma.otpCode.updateMany({
+            where: { userId, isUsed: false },
+            data: { isUsed: true }
+        });
+
+        res.json({
+            success: true,
+            message: 'Logged out successfully 🎉'
+        });
+    } catch (error) {
+        console.error("Logout controller error : ", error.message);
+        res.status(500).json({
+            success: false,
+            message: 'Internal Server Issue',
             error: error.message
         });
     }
