@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ENUMS
+
+enum UserRoles {
+  RIDER
+  DRIVER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum DriverStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum DriverAvailability {
+  ONLINE
+  OFFLINE
+  ON_RIDE
+}
+
+enum VehicleType {
+  AUTO
+  BIKE
+  SEDAN
+  SUV
+  LUXURY
+}
+
+enum PaymentMethod {
+  COD
+  UPI
+  WALLET
+  CARD
+  NET_BANKING
+}
+
+enum RideStatus {
+  REQUESTED
+  ACCEPTED
+  ARRIVING
+  STARTED
+  COMPLETED
+  CANCELED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  RIDE_REQUEST
+  RIDE_ACCEPTED
+  DRIVER_ARRIVING
+  RIDE_STARTED
+  RIDE_COMPLETED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  OTP
+  GENERAL
+}
+
+// MODELS
+
+model User {
+  id              String         @id @default(uuid())
+  name            String
+  email           String         @unique
+  phone           String         @unique
+  password        String?
+  role            UserRoles      @default(RIDER)
+  status          UserStatus     @default(ACTIVE)
+  profilePhoto    String?
+  isEmailVerified Boolean        @default(false)
+  isPhoneVerified Boolean        @default(false)
+  fcmToken        String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  driverProfile   DriverProfile?
+  ridesAsRider    Ride[]         @relation("RiderRides")
+  ridesAsDriver   Ride[]         @relation("DriverRides")
+  messagesSent    Message[]
+  notifications   Notification[]
+  ratingsGiven    Rating[]       @relation("RatingsGiven")
+  ratingsReceived Rating[]       @relation("RatingsReceived")
+  otpCodes        OtpCode[]
+  wallet          Wallet?
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  userId    String
+  code      String
+  type      String
+  purpose   String
+  expireAt  DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model DriverProfile {
+  id            String             @id @default(uuid())
+  userId        String             @unique
+  licenseNumber String             @unique
+  licensePhoto  String
+  vehicleType   VehicleType
+  vehiclePlate  String             @unique
+  vehicleModel  String
+  vehicleColor  String
+  vehiclePhoto  String
+  rcPhoto       String
+  status        DriverStatus       @default(PENDING)
+  availability  DriverAvailability @default(OFFLINE)
+  currentLat    Float?
+  currentLng    Float?
+  totalRides    Int                @default(0)
+  rating        Float              @default(5.0)
+  totalEarnings Float              @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  user          User               @relation(fields: [userId], references: [id])
+  earnings      Earning[]
+}
+
+model Ride {
+  id             String         @id @default(uuid())
+  riderId        String
+  driverId       String?
+  pickupLat      Float
+  pickupLng      Float
+  pickupAddress  String
+  dropoffLat     Float
+  dropoffLng     Float
+  dropoffAddress String
+  vehicleType    VehicleType
+  status         RideStatus     @default(REQUESTED)
+  estimatedFare  Float
+  actualFare     Float?
+  distance       Float?
+  duration       Int?
+  surgeFactor    Float          @default(1.0)
+  requestedAt    DateTime       @default(now())
+  acceptedAt     DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+  cancelReason   String?
+  rider          User           @relation("RiderRides", fields: [riderId], references: [id])
+  driver         User?          @relation("DriverRides", fields: [driverId], references: [id])
+  payment        Payment?
+  messages       Message[]
+  tracking       RideTracking[]
+  rating         Rating?
+  earning        Earning?
+}
+
+model RideTracking {
+  id        String   @id @default(uuid())
+  rideId    String
+  lat       Float
+  lng       Float
+  speed     Float?
+  heading   Float?
+  timestamp DateTime @default(now())
+  ride      Ride     @relation(fields: [rideId], references: [id])
+
+  @@index([rideId, timestamp])
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  rideId          String        @unique
+  riderId         String
+  amount          Float
+  platformFee     Float
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  transactionId   String?
+  stripePaymentId String?
+  refundId        String?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+  ride            Ride          @relation(fields: [rideId], references: [id])
+}
+
+model Message {
+  id               String   @id @default(uuid())
+  rideId           String
+  senderId         String
+  encryptedContent String
+  iv               String
+  messageType      String   @default("TEXT")
+  isRead           Boolean  @default(false)
+  sentAt           DateTime @default(now())
+  ride             Ride     @relation(fields: [rideId], references: [id])
+  sender           User     @relation(fields: [senderId], references: [id])
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  type      NotificationType
+  data      Json?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id])
+}
+
+model Rating {
+  id         String   @id @default(uuid())
+  rideId     String   @unique
+  fromUserId String
+  toUserId   String
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+  ride       Ride     @relation(fields: [rideId], references: [id])
+  fromUser   User     @relation("RatingsGiven", fields: [fromUserId], references: [id])
+  toUser     User     @relation("RatingsReceived", fields: [toUserId], references: [id])
+}
+
+model Earning {
+  id        String        @id @default(uuid())
+  driverId  String
+  rideId    String        @unique
+  amount    Float
+  isPaid    Boolean       @default(false)
+  paidAt    DateTime?
+  createdAt DateTime      @default(now())
+  driver    DriverProfile @relation(fields: [driverId], references: [id])
+  ride      Ride          @relation(fields: [rideId], references: [id])
+}
+
+model Wallet {
+  id           String              @id @default(uuid())
+  userId       String              @unique
+  balance      Float               @default(0)
+  currency     String              @default("INR")
+  updatedAt    DateTime            @updatedAt
+  user         User                @relation(fields: [userId], references: [id])
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String   @id @default(uuid())
+  walletId    String
+  amount      Float
+  type        String
+  description String
+  createdAt   DateTime @default(now())
+  wallet      Wallet   @relation(fields: [walletId], references: [id])
+}
