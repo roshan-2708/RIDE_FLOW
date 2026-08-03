@@ -1,0 +1,105 @@
+const { Server } = require('socket.io');
+
+// store connected users
+const connectedUsers = new Map();
+
+// store driver location
+const driverLocations = new Map();
+
+const initializeSocket = (ioOrServer) => {
+    let io;
+    if (ioOrServer instanceof Server || (ioOrServer && typeof ioOrServer.on === 'function')) {
+        io = ioOrServer;
+    } else {
+        io = new Server(ioOrServer, {
+            cors: {
+                origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+                methods: ['GET', 'POST'],
+                credentials: true
+            }
+        });
+    }
+
+    io.on('connection', (socket) => {
+        console.log(`socket is connected ${socket.id}`);
+
+        // user join with their id
+        socket.on('user:join', (userId) => {
+            connectedUsers.set(userId, socket.id);
+            socket.userId = userId;
+            console.log(`user joined : ${userId} -> ${socket.id}`);
+        });
+
+        // driver update gps location
+        socket.on('driver:update-location', (data) => {
+            const { driverId, lat, lng } = data;
+
+            // save driver location
+            driverLocations.set(driverId, { lat, lng, lastUpdate: new Date() });
+
+            // broadcast to all riders watching this driver
+            socket.broadcast.emit('driver:location:update', {
+                driverId, lat, lng
+            });
+        });
+
+        // driver accept ride -> notify rider
+        socket.on('ride:driver-accepted', (data) => {
+            const { riderId, rideId, driverInfo } = data;
+            const rideSocketId = connectedUsers.get(riderId);
+
+            if (rideSocketId) {
+                io.to(rideSocketId).emit('ride:accepted', {
+                    message: `Driver accepted your ride!`,
+                    rideId,
+                    driverInfo
+                });
+            }
+        });
+
+        // driver start ride -> notify rider
+        socket.on('ride:driver-started', (data) => {
+            const { riderId, rideId } = data;
+            const riderSocketId = connectedUsers.get(riderId);
+
+            if (riderSocketId) {
+                io.to(riderSocketId).emit('ride:started', {
+                    message: 'Your ride has started',
+                    rideId
+                });
+            }
+        });
+
+        // driver completed ride -> notify rider
+        socket.on('ride:driver-completed', (data) => {
+            const { riderId, rideId } = data;
+            const riderSocketId = connectedUsers.get(riderId);
+
+            if (riderSocketId) {
+                io.to(riderSocketId).emit('ride:completed', {
+                    message: 'Your ride has completed',
+                    rideId
+                });
+            }
+        });
+
+        // disconnect
+        socket.on('disconnect', () => {
+            if (socket.userId) {
+                connectedUsers.delete(socket.userId);
+                driverLocations.delete(socket.userId);
+                console.log(`user disconnected ${socket.userId}`);
+            }
+        });
+    });
+    return io;
+};
+
+// get a driver's current location
+const getDriverLocation = (driverId) => driverLocations.get(driverId);
+
+module.exports = initializeSocket;
+module.exports.initializeSocket = initializeSocket;
+module.exports.getDriverLocation = getDriverLocation;
+
+
