@@ -2,86 +2,78 @@ const prisma = require('../config/db');
 const { calculateFare } = require('../utils/fare.utils');
 
 // accepted ride
-const acceptedRide = async (req, res) => {
+const acceptRide = async (req, res) => {
     try {
-        const driverId = req.userId || req.user?.userId;
+        const driverId = req.user.userId;
         const { rideId } = req.params;
 
-        if (!rideId) {
-            return res.status(400).json({
-                success: false,
-                message: 'rideId parameter is required',
+        // ATOMIC TRANSACTION — only 1 driver can win!
+        const result = await prisma.$transaction(async (tx) => {
+
+            // Step 1: Lock the ride row and check status
+            const ride = await tx.ride.findUnique({
+                where: { id: rideId }
             });
-        }
 
-        // check ride exists and is available
-        const ride = await prisma.ride.findUnique({
-            where: { id: rideId }
-        });
+            if (!ride) throw new Error('RIDE_NOT_FOUND');
+            if (ride.status !== 'REQUESTED') throw new Error('RIDE_ALREADY_TAKEN');
+            if (ride.driverId) throw new Error('RIDE_ALREADY_TAKEN');
 
-        if (!ride) {
-            return res.status(404).json({
-                success: false,
-                message: 'No ride found',
-            });
-        }
-
-        if (ride.status !== 'REQUESTED') {
-            return res.status(400).json({
-                success: false,
-                message: "Ride is not in 'REQUESTED' state",
-            });
-        }
-
-        // check driver has no active ride
-        const activeRide = await prisma.ride.findFirst({
-            where: {
-                driverId,
-                status: {
-                    in: ['ACCEPTED', 'STARTED'],
+            // Step 2: Check driver has no active ride
+            const activeRide = await tx.ride.findFirst({
+                where: {
+                    driverId,
+                    status: { in: ['ACCEPTED', 'STARTED'] }
                 }
-            }
-        });
-
-        if (activeRide) {
-            return res.status(400).json({
-                success: false,
-                message: 'You already have an active ride'
             });
-        }
+            if (activeRide) throw new Error('DRIVER_BUSY');
 
-        // update ride
-        const updateRide = await prisma.ride.update({
-            where: { id: rideId },
-            data: {
-                driverId,
-                status: 'ACCEPTED',
-                acceptedAt: new Date()
-            }
-        });
+            // Step 3: Atomically update ride + driver status
+            const updatedRide = await tx.ride.update({
+                where: {
+                    id: rideId,
+                    status: 'REQUESTED' // ← double check inside transaction
+                },
+                data: {
+                    driverId,
+                    status: 'ACCEPTED',
+                    acceptedAt: new Date()
+                }
+            });
 
-        // set driver is unavailable (ON_RIDE)
-        await prisma.driverProfile.updateMany({
-            where: { userId: driverId },
-            data: { availability: 'ON_RIDE' }
+            // update driver status
+            await tx.driverProfile.upsert({
+                where: { driverId },
+                update: { isAvailable: false },
+                create: { driverId, isAvailable: false }
+            });
+
+            return updatedRide;
         });
 
         return res.status(200).json({
             success: true,
-            message: 'Ride accepted successfully',
-            ride: updateRide
+            message: 'Ride accepted!',
+            ride: result
         });
 
     } catch (error) {
-        console.log("Error in accept ride controller:", error.message);
-        return res.status(500).json({
-            success: false,
-            message: 'Internal server error',
-            error: error.message
-        });
+        if (error.message === 'RIDE_ALREADY_TAKEN') {
+            return res.status(409).json({
+                success: false,
+                message: 'Sorry! Another driver accepted this ride first. Try another ride.'
+            });
+        }
+        if (error.message === 'DRIVER_BUSY') {
+            return res.status(400).json({
+                success: false,
+                message: 'You already have an active ride!'
+            });
+        }
+        console.error('Accept ride error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to accept ride' });
     }
 };
-
 // start ride
 const startRide = async (req, res) => {
     try {
@@ -230,4 +222,4 @@ const getEarnings = async (req, res) => {
     }
 };
 
-module.exports = { acceptedRide, startRide, completeRide, getEarnings };
+module.exports = { acceptedRide, startRide, completeRide, getEarnings };
