@@ -27,6 +27,7 @@ const protect = (req, res, next) => {
         // Attach user info to request
         req.userId = decoded.userId;
         req.userRole = decoded.role;
+        req.user = { userId: decoded.userId, role: decoded.role };
 
         next();
     } catch (error) {

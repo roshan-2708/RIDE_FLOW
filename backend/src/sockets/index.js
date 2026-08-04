@@ -91,6 +91,32 @@ const initializeSocket = (ioOrServer) => {
                 console.log(`user disconnected ${socket.userId}`);
             }
         });
+
+
+        // real time chat
+        socket.on('ride:join-room', (rideId) => {
+            socket.join(`ride_${rideId}`);
+            console.log(`Joined room : ${rideId}`);
+        });
+
+        socket.on('ride:leave-room', (rideId) => {
+            socket.leave(`ride_${rideId}`);
+            console.log(`Left room : ${rideId}`);
+        });
+
+        // user send message
+        socket.on('chat:send-message', (data) => {
+            const { rideId, message, senderId, sendId, senderName, senderRole } = data;
+            const actualSenderId = senderId || sendId;
+            // broadcast to everyone in room
+            io.to(`ride_${rideId}`).emit('chat:new-message', {
+                senderId: actualSenderId,
+                senderName,
+                senderRole,
+                message,
+                timestamp: new Date().toISOString()
+            });
+        });
     });
     return io;
 };

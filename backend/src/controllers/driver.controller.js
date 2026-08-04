@@ -2,7 +2,7 @@ const prisma = require('../config/db');
 const { calculateFare } = require('../utils/fare.utils');
 
 // accepted ride
-const acceptRide = async (req, res) => {
+const acceptedRide = async (req, res) => {
     try {
         const driverId = req.user.userId;
         const { rideId } = req.params;
@@ -42,10 +42,9 @@ const acceptRide = async (req, res) => {
             });
 
             // update driver status
-            await tx.driverProfile.upsert({
-                where: { driverId },
-                update: { isAvailable: false },
-                create: { driverId, isAvailable: false }
+            await tx.driverProfile.updateMany({
+                where: { userId: driverId },
+                data: { availability: 'ON_RIDE' }
             });
 
             return updatedRide;
@@ -222,4 +221,4 @@ const getEarnings = async (req, res) => {
     }
 };
 
-module.exports = { acceptedRide, startRide, completeRide, getEarnings };
+module.exports = { acceptRide: acceptedRide, acceptedRide, startRide, completeRide, getEarnings };
