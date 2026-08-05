@@ -6,7 +6,7 @@ const api = axios.create({
 });
 
 // auto attach token to every request
-api.interceptors.request((config) => {
+api.interceptors.request.use((config) => {
     const token = localStorage.getItem('accessToken');
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -19,10 +19,12 @@ api.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response?.status === 401) {
-            // logout user and redirect to login
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            window.location.href = '/auth/login';
+            // Only redirect if NOT already on authentication pages
+            if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth')) {
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
+                window.location.href = '/auth/login';
+            }
         }
         return Promise.reject(error);
     }

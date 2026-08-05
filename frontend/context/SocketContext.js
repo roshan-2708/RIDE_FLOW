@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { io } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 
 const SocketContext = createContext();
@@ -11,19 +12,23 @@ export const SocketProvider = ({ children }) => {
 
     useEffect(() => {
         if (user) {
-            const newSocket = import('http://localhost:5000', {
+            const newSocket = io('http://localhost:5000', {
                 transports: ['websocket'],
                 withCredentials: true
             });
 
             newSocket.on('connect', () => {
-                console.log('Socket connected');
-                newSocket.emit('user : join', user.id);
+                console.log('Socket connected:', newSocket.id);
+                newSocket.emit('user:join', user.id);
             });
 
             setSocket(newSocket);
 
-            return () => newSocket.close();
+            return () => {
+                newSocket.close();
+            };
+        } else {
+            setSocket(null);
         }
     }, [user]);
 
@@ -33,3 +38,5 @@ export const SocketProvider = ({ children }) => {
         </SocketContext.Provider>
     );
 };
+
+export const useSocket = () => useContext(SocketContext);

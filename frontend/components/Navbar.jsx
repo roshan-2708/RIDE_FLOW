@@ -6,7 +6,7 @@ import Link from "next/link";
 import { usePathname } from 'next/navigation';
 
 const Navbar = () => {
-    const { user, setUser } = useAuth();
+    const { user, logout } = useAuth();
     const pathname = usePathname();
     const [menuOpen, setMenuOpen] = useState(false);
     const [scrolled, setScrolled] = useState(false);
@@ -78,7 +78,7 @@ const Navbar = () => {
                     </ul>
 
                     {/* ── Auth Buttons ── */}
-                    <div className="hidden lg:flex items-center gap-2.5 flex-shrink-0">
+                    <div className="hidden lg:flex items-center gap-3 flex-shrink-0">
                         {user ? (
                             <>
                                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-orange-400 text-white font-bold text-sm flex items-center justify-center shadow-[0_2px_8px_rgba(255,90,0,0.4)]">
@@ -87,17 +87,23 @@ const Navbar = () => {
                                 <span className="text-sm font-medium text-gray-700">
                                     Hi, {user.name?.split(' ')[0]}
                                 </span>
+                                <button
+                                    onClick={logout}
+                                    className="px-4 py-2 rounded-full text-sm font-semibold border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all duration-200"
+                                >
+                                    Logout
+                                </button>
                             </>
                         ) : (
                             <>
                                 <Link
-                                    href="/login"
+                                    href="/auth/login"
                                     className="px-5 py-2 rounded-full text-sm font-semibold border border-gray-300 text-gray-700 transition-all duration-200 hover:border-orange-500 hover:text-orange-500 hover:bg-orange-50"
                                 >
                                     Login
                                 </Link>
                                 <Link
-                                    href="/signup"
+                                    href="/auth/register"
                                     className="px-5 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white shadow-[0_4px_14px_rgba(255,90,0,0.35)] transition-all duration-200 hover:bg-orange-600 hover:-translate-y-0.5 hover:shadow-[0_6px_18px_rgba(255,90,0,0.45)]"
                                 >
                                     Sign Up
@@ -166,19 +172,32 @@ const Navbar = () => {
                 {/* Mobile Auth */}
                 <div className="flex flex-col gap-3 border-t border-gray-100 pt-6">
                     {user ? (
-                        <span className="text-base font-semibold text-gray-900">
-                            Hi, {user.name?.split(' ')[0]} 👋
-                        </span>
+                        <div className="flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-orange-500 to-orange-400 text-white font-bold text-base flex items-center justify-center shadow-md">
+                                    {user.name?.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-base font-semibold text-gray-900">
+                                    Hi, {user.name?.split(' ')[0]} 👋
+                                </span>
+                            </div>
+                            <button
+                                onClick={logout}
+                                className="w-full py-3 rounded-full text-sm font-semibold text-center border border-red-200 text-red-600 hover:bg-red-50 transition-all duration-200"
+                            >
+                                Logout
+                            </button>
+                        </div>
                     ) : (
                         <>
                             <Link
-                                href="/login"
+                                href="/auth/login"
                                 className="w-full py-3 rounded-full text-sm font-semibold text-center border border-gray-300 text-gray-700 hover:border-orange-500 hover:text-orange-500 hover:bg-orange-50 transition-all duration-200"
                             >
                                 Login
                             </Link>
                             <Link
-                                href="/signup"
+                                href="/auth/register"
                                 className="w-full py-3 rounded-full text-sm font-semibold text-center bg-orange-500 text-white shadow-[0_4px_14px_rgba(255,90,0,0.35)] hover:bg-orange-600 transition-all duration-200"
                             >
                                 Sign Up

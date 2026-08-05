@@ -1,6 +1,8 @@
 'use client';
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from 'next/navigation';
+import api from '@/lib/api';
+import toast from 'react-hot-toast';
 
 const AuthContext = createContext();
 
@@ -15,10 +17,14 @@ export const AuthProvider = ({ children }) => {
         const storeToken = localStorage.getItem('accessToken');
 
         if (storeToken && storeUser) {
-            setUser(JSON.parse(storeUser));
-            setToken(storeToken);
-            setLoading(false);
+            try {
+                setUser(JSON.parse(storeUser));
+                setToken(storeToken);
+            } catch (err) {
+                console.error("Failed to parse stored user", err);
+            }
         }
+        setLoading(false);
     }, []);
 
     const login = (userData, accessToken) => {
@@ -28,12 +34,19 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('accessToken', accessToken);
     };
 
-    const logout = () => {
-        setUser(null);
-        setToken(null);
-        localStorage.removeItem('user');
-        localStorage.removeItem('accessToken');
-        router.push('/auth/login');
+    const logout = async () => {
+        try {
+            await api.post('/auth/logout');
+            toast.success('Logged out successfully');
+        } catch (err) {
+            console.error("Logout API error:", err);
+        } finally {
+            setUser(null);
+            setToken(null);
+            localStorage.removeItem('user');
+            localStorage.removeItem('accessToken');
+            router.push('/auth/login');
+        }
     };
 
     return (
