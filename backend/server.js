@@ -11,6 +11,7 @@ const rideRoutes = require('./src/routes/ride.routes');
 const driverRoutes = require('./src/routes/driver.routes');
 const paymentRoutes = require('./src/routes/payment.routes');
 const chatRoutes = require('./src/routes/chat.routes');
+const adminRoutes = require('./src/routes/admin.routes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -41,6 +42,8 @@ app.use('/api/rides', rideRoutes);
 app.use('/api/driver', driverRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/admin', adminRoutes);
+
 
 
 app.get('/', async (req, res) => {
