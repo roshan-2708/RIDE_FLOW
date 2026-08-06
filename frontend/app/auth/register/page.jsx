@@ -54,7 +54,7 @@ const RegisterPage = () => {
             }
             toast.success('Registration successful! 🎉');
             if (res.data.user?.role === 'DRIVER') {
-                router.push('/driver');
+                router.push('/dashboard');
             } else {
                 router.push('/');
             }

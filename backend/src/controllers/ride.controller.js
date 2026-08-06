@@ -181,9 +181,45 @@ const getSingleRide = async (req, res) => {
     }
 };
 
+// get available (pending) rides for drivers
+const getAvailableRides = async (req, res) => {
+    try {
+        const rides = await prisma.ride.findMany({
+            where: {
+                status: 'REQUESTED',
+                driverId: null
+            },
+            include: {
+                rider: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        profilePhoto: true
+                    }
+                }
+            },
+            orderBy: { requestedAt: 'desc' }
+        });
+
+        return res.status(200).json({
+            success: true,
+            rides
+        });
+    } catch (error) {
+        console.log("Error in get available rides controller", error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getFareEstimates,
     bookRide,
     getMyRides,
-    getSingleRide
+    getSingleRide,
+    getAvailableRides
 };
