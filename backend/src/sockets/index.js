@@ -55,32 +55,71 @@ const initializeSocket = (ioOrServer) => {
                     driverInfo
                 });
             }
+            io.to(`ride_${rideId}`).emit('ride:status-changed', {
+                status: 'ACCEPTED',
+                rideId,
+                driverInfo
+            });
+        });
+
+        // driver arrived at pickup point
+        socket.on('ride:driver-arrived-at-pickup', (data) => {
+            const rideId = typeof data === 'string' ? data : data?.rideId;
+            const riderId = data?.riderId;
+            if (riderId) {
+                const riderSocketId = connectedUsers.get(riderId);
+                if (riderSocketId) {
+                    io.to(riderSocketId).emit('ride:driver-arrived', {
+                        message: 'Your driver has arrived at the pickup location!',
+                        rideId
+                    });
+                }
+            }
+            io.to(`ride_${rideId}`).emit('ride:status-changed', {
+                status: 'ARRIVING',
+                message: 'Driver arrived at pickup location',
+                rideId
+            });
         });
 
         // driver start ride -> notify rider
         socket.on('ride:driver-started', (data) => {
-            const { riderId, rideId } = data;
-            const riderSocketId = connectedUsers.get(riderId);
-
-            if (riderSocketId) {
-                io.to(riderSocketId).emit('ride:started', {
-                    message: 'Your ride has started',
-                    rideId
-                });
+            const { riderId, rideId } = data || {};
+            const actualRideId = rideId || data;
+            if (riderId) {
+                const riderSocketId = connectedUsers.get(riderId);
+                if (riderSocketId) {
+                    io.to(riderSocketId).emit('ride:started', {
+                        message: 'Your ride has started',
+                        rideId: actualRideId
+                    });
+                }
             }
+            io.to(`ride_${actualRideId}`).emit('ride:status-changed', {
+                status: 'STARTED',
+                message: 'Ride started and in progress',
+                rideId: actualRideId
+            });
         });
 
         // driver completed ride -> notify rider
         socket.on('ride:driver-completed', (data) => {
-            const { riderId, rideId } = data;
-            const riderSocketId = connectedUsers.get(riderId);
-
-            if (riderSocketId) {
-                io.to(riderSocketId).emit('ride:completed', {
-                    message: 'Your ride has completed',
-                    rideId
-                });
+            const { riderId, rideId } = data || {};
+            const actualRideId = rideId || data;
+            if (riderId) {
+                const riderSocketId = connectedUsers.get(riderId);
+                if (riderSocketId) {
+                    io.to(riderSocketId).emit('ride:completed', {
+                        message: 'Your ride has completed',
+                        rideId: actualRideId
+                    });
+                }
             }
+            io.to(`ride_${actualRideId}`).emit('ride:status-changed', {
+                status: 'COMPLETED',
+                message: 'Ride completed successfully',
+                rideId: actualRideId
+            });
         });
 
         // disconnect
@@ -92,17 +131,22 @@ const initializeSocket = (ioOrServer) => {
             }
         });
 
-
-        // real time chat
+        // real time ride room join & leave
         socket.on('ride:join-room', (rideId) => {
             socket.join(`ride_${rideId}`);
             console.log(`Joined room : ${rideId}`);
+        });
+
+        socket.on('ride:join', (rideId) => {
+            socket.join(`ride_${rideId}`);
+            console.log(`Joined room (ride:join) : ${rideId}`);
         });
 
         socket.on('ride:leave-room', (rideId) => {
             socket.leave(`ride_${rideId}`);
             console.log(`Left room : ${rideId}`);
         });
+
 
         // user send message
         socket.on('chat:send-message', (data) => {

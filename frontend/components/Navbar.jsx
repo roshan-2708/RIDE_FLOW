@@ -90,6 +90,15 @@ const Navbar = () => {
                                         🚕 Driver Dashboard
                                     </Link>
                                 )}
+
+                                {user.role === 'ADMIN' && (
+                                    <Link
+                                        href="/admin/map"
+                                        className="px-4 py-2 rounded-full text-sm font-semibold bg-orange-500/10 text-orange-600 border border-orange-200 hover:bg-orange-500 hover:text-white transition-all duration-200"
+                                    >
+                                        🚕 Admin Dashboard
+                                    </Link>
+                                )}
                                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-orange-400 text-white font-bold text-sm flex items-center justify-center shadow-[0_2px_8px_rgba(255,90,0,0.4)]">
                                     {user.name?.charAt(0).toUpperCase()}
                                 </div>

@@ -153,9 +153,21 @@ const getSingleRide = async (req, res) => {
         const ride = await prisma.ride.findUnique({
             where: { id },
             include: {
+                rider: {
+                    select: { id: true, name: true, phone: true, email: true, profilePhoto: true }
+                },
                 driver: {
-                    include: { driverProfile: true }
-                }
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        email: true,
+                        profilePhoto: true,
+                        driverProfile: true
+                    }
+                },
+                rating: true,
+                payments: true
             }
         });
 
@@ -165,6 +177,7 @@ const getSingleRide = async (req, res) => {
                 message: 'Ride not found'
             });
         }
+
 
         return res.status(200).json({
             success: true,
