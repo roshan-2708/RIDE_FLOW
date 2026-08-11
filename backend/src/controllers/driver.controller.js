@@ -221,4 +221,213 @@ const getEarnings = async (req, res) => {
     }
 };
 
-module.exports = { acceptRide: acceptedRide, acceptedRide, startRide, completeRide, getEarnings };
+// get driver profile
+const getDriverProfile = async (req, res) => {
+    try {
+        const driverId = req.userId || req.user?.userId;
+        const profile = await prisma.driverProfile.findUnique({
+            where: { userId: driverId },
+            include: {
+                user: {
+                    select: { id: true, name: true, email: true, phone: true, profilePhoto: true }
+                }
+            }
+        });
+        if (!profile) {
+            return res.status(404).json({ success: false, message: 'Driver profile not found' });
+        }
+        return res.status(200).json({ success: true, profile });
+    } catch (error) {
+        console.log("Error in get driver profile:", error.message);
+        return res.status(500).json({ success: false, message: 'Failed to fetch driver profile', error: error.message });
+    }
+};
+
+// update driver availability
+const updateAvailability = async (req, res) => {
+    try {
+        const driverId = req.userId || req.user?.userId;
+        const { availability, lat, lng } = req.body;
+
+        const profile = await prisma.driverProfile.findUnique({
+            where: { userId: driverId }
+        });
+
+        if (!profile) {
+            return res.status(404).json({ success: false, message: 'Driver profile not found' });
+        }
+
+        if (availability === 'ONLINE' && profile.status !== 'APPROVED') {
+            return res.status(403).json({
+                success: false,
+                message: `Cannot go online. Your profile status is ${profile.status}.`
+            });
+        }
+
+        const dataToUpdate = {};
+        if (availability) dataToUpdate.availability = availability;
+        if (typeof lat === 'number') dataToUpdate.currentLat = lat;
+        if (typeof lng === 'number') dataToUpdate.currentLng = lng;
+
+        const updated = await prisma.driverProfile.update({
+            where: { userId: driverId },
+            data: dataToUpdate
+        }); 
+
+        return res.status(200).json({
+            success: true,
+            message: `Availability updated to ${updated.availability}`,
+            profile: updated
+        });
+    } catch (error) {
+        console.log("Error in update availability:", error.message);
+        return res.status(500).json({ success: false, message: 'Failed to update availability', error: error.message });
+    }
+};
+
+// Driver Onboarding / Application submission
+const submitOnboarding = async (req, res) => {
+
+    try {
+        const userId = req.userId || req.user?.userId;
+        const {
+            licenseNumber,
+            vehicleType,
+            vehiclePlate,
+            vehicleLicensePlate,
+            vehicleModel,
+            vehicleColor
+        } = req.body;
+
+        const plate = (vehiclePlate || vehicleLicensePlate || '').trim().toUpperCase();
+        const licNum = (licenseNumber || '').trim().toUpperCase();
+
+        // Check required fields
+        if (!licNum || !vehicleType || !plate || !vehicleModel || !vehicleColor) {
+            return res.status(400).json({
+                success: false,
+                message: 'All fields (licenseNumber, vehicleType, vehiclePlate, vehicleModel, vehicleColor) are required'
+            });
+        }
+
+        // Validate vehicleType against Enum
+        const validVehicleTypes = ['AUTO', 'BIKE', 'SEDAN', 'SUV', 'LUXURY'];
+        const normalizedVehicleType = vehicleType.toUpperCase();
+        if (!validVehicleTypes.includes(normalizedVehicleType)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid vehicle type. Must be one of: ${validVehicleTypes.join(', ')}`
+            });
+        }
+
+        // Retrieve file paths from multer or body
+        const licensePhoto = req.files?.licensePhoto?.[0]
+            ? `/uploads/documents/${req.files.licensePhoto[0].filename}`
+            : req.body.licensePhoto;
+
+        const rcPhoto = (req.files?.rcPhoto?.[0] || req.files?.rc?.[0])
+            ? `/uploads/documents/${(req.files.rcPhoto?.[0] || req.files.rc?.[0]).filename}`
+            : (req.body.rcPhoto || req.body.rc);
+
+        const vehiclePhoto = req.files?.vehiclePhoto?.[0]
+            ? `/uploads/documents/${req.files.vehiclePhoto[0].filename}`
+            : req.body.vehiclePhoto;
+
+        if (!licensePhoto || !rcPhoto || !vehiclePhoto) {
+            return res.status(400).json({
+                success: false,
+                message: 'All document photos (licensePhoto, rcPhoto, vehiclePhoto) are required'
+            });
+        }
+
+        // Check unique licenseNumber or vehiclePlate used by another user
+        const existingPlate = await prisma.driverProfile.findFirst({
+            where: {
+                vehiclePlate: plate,
+                NOT: { userId }
+            }
+        });
+        if (existingPlate) {
+            return res.status(409).json({
+                success: false,
+                message: 'This vehicle license plate is already registered by another driver.'
+            });
+        }
+
+        const existingLicense = await prisma.driverProfile.findFirst({
+            where: {
+                licenseNumber: licNum,
+                NOT: { userId }
+            }
+        });
+        if (existingLicense) {
+            return res.status(409).json({
+                success: false,
+                message: 'This driver license number is already registered by another driver.'
+            });
+        }
+
+        // Upsert driver profile
+        const profile = await prisma.driverProfile.upsert({
+            where: { userId },
+            create: {
+                userId,
+                licenseNumber: licNum,
+                licensePhoto,
+                vehicleType: normalizedVehicleType,
+                vehiclePlate: plate,
+                vehicleModel,
+                vehicleColor,
+                vehiclePhoto,
+                rcPhoto,
+                status: 'PENDING',
+                availability: 'OFFLINE'
+            },
+            update: {
+                licenseNumber: licNum,
+                licensePhoto,
+                vehicleType: normalizedVehicleType,
+                vehiclePlate: plate,
+                vehicleModel,
+                vehicleColor,
+                vehiclePhoto,
+                rcPhoto,
+                status: 'PENDING',
+                availability: 'OFFLINE'
+            }
+        });
+
+        // Ensure user role is DRIVER
+        await prisma.user.update({
+            where: { id: userId },
+            data: { role: 'DRIVER' }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'Driver onboarding submitted successfully! Your application is under admin review.',
+            profile
+        });
+
+    } catch (error) {
+        console.error('Error in submitOnboarding controller:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error while submitting onboarding',
+            error: error.message
+        });
+    }
+};
+
+module.exports = {
+    acceptRide: acceptedRide,
+    acceptedRide,
+    startRide,
+    completeRide,
+    getEarnings,
+    getDriverProfile,
+    updateAvailability,
+    submitOnboarding
+};
+
+

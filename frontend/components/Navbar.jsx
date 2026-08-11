@@ -84,7 +84,7 @@ const Navbar = () => {
                             <>
                                 {user.role === 'DRIVER' && (
                                     <Link
-                                        href="/dashboard"
+                                        href="/driver/dashboard"
                                         className="px-4 py-2 rounded-full text-sm font-semibold bg-orange-500/10 text-orange-600 border border-orange-200 hover:bg-orange-500 hover:text-white transition-all duration-200"
                                     >
                                         🚕 Driver Dashboard

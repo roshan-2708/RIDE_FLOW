@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useSocket } from '@/context/SocketContext';
 import { useRouter } from 'next/navigation';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
@@ -15,8 +16,13 @@ const vehicleIcons = {
 };
 
 const DashboardPage = () => {
-  const { user, loading, logout } = useAuth();
+  const { user, loading } = useAuth();
+  const { socket } = useSocket();
   const router = useRouter();
+
+  const [driverProfile, setDriverProfile] = useState(user?.driverProfile || null);
+  const [isOnline, setIsOnline] = useState(user?.driverProfile?.availability === 'ONLINE');
+  const [togglingAvailability, setTogglingAvailability] = useState(false);
 
   const [earning, setEarning] = useState({
     totalEarnings: 0,
@@ -27,6 +33,8 @@ const DashboardPage = () => {
   const [isFetching, setIsFetching] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [acceptingId, setAcceptingId] = useState(null);
+
+  const geoWatchRef = useRef(null);
 
   // Auth redirection safety check
   useEffect(() => {
@@ -40,6 +48,19 @@ const DashboardPage = () => {
     }
   }, [loading, user, router]);
 
+  // Fetch fresh driver profile (Status, availability, vehicle details)
+  const fetchProfile = useCallback(async () => {
+    try {
+      const res = await api.get('/driver/profile');
+      if (res.data?.profile) {
+        setDriverProfile(res.data.profile);
+        setIsOnline(res.data.profile.availability === 'ONLINE');
+      }
+    } catch (error) {
+      console.log('Profile fetch error:', error.message);
+    }
+  }, []);
+
   const fetchEarnings = useCallback(async () => {
     try {
       const res = await api.get('/driver/earnings');
@@ -52,7 +73,6 @@ const DashboardPage = () => {
       }
     } catch (error) {
       console.error('Failed to load earnings:', error);
-      toast.error('Failed to load earnings data');
     }
   }, []);
 
@@ -67,27 +87,127 @@ const DashboardPage = () => {
 
   const loadAllData = useCallback(async (showToast = false) => {
     if (showToast) setIsRefreshing(true);
-    await Promise.all([fetchEarnings(), fetchAvailableRides()]);
+    await Promise.all([fetchProfile(), fetchEarnings(), fetchAvailableRides()]);
     setIsFetching(false);
     if (showToast) {
       setIsRefreshing(false);
       toast.success('Dashboard refreshed!');
     }
-  }, [fetchEarnings, fetchAvailableRides]);
+  }, [fetchProfile, fetchEarnings, fetchAvailableRides]);
 
+  // Initial load
   useEffect(() => {
     if (user?.role === 'DRIVER') {
-      const fetchData = async () => {
-        await loadAllData();
-      };
-      fetchData();
+      loadAllData();
       // Poll available rides every 15 seconds
       const interval = setInterval(() => {
-        fetchAvailableRides();
+        if (isOnline) {
+          fetchAvailableRides();
+        }
       }, 15000);
       return () => clearInterval(interval);
     }
-  }, [user, loadAllData, fetchAvailableRides]);
+  }, [user, isOnline, loadAllData, fetchAvailableRides]);
+
+  // Handle GPS location streaming when online
+  useEffect(() => {
+    if (isOnline && typeof window !== 'undefined' && 'geolocation' in navigator) {
+      const emitLocation = (coords) => {
+        if (socket && user?.id) {
+          socket.emit('driver:update-location', {
+            driverId: user.id,
+            lat: coords.latitude,
+            lng: coords.longitude,
+          });
+        }
+      };
+
+      // Get initial position
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          emitLocation(position.coords);
+          // Persist coordinate in backend
+          api.put('/driver/availability', {
+            availability: 'ONLINE',
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          }).catch(() => {});
+        },
+        (err) => console.log('Geolocation position error:', err),
+        { enableHighAccuracy: true }
+      );
+
+      // Watch continuous position changes
+      geoWatchRef.current = navigator.geolocation.watchPosition(
+        (position) => {
+          emitLocation(position.coords);
+        },
+        (err) => console.log('Geolocation watch error:', err),
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
+      );
+
+      return () => {
+        if (geoWatchRef.current !== null) {
+          navigator.geolocation.clearWatch(geoWatchRef.current);
+        }
+      };
+    }
+  }, [isOnline, socket, user]);
+
+  // Toggle Online/Offline Availability
+  const toggleAvailability = async () => {
+    const driverStatus = driverProfile?.status || user?.driverProfile?.status || 'PENDING';
+    
+    if (driverStatus !== 'APPROVED') {
+      toast.error(`Cannot go online. Application status is ${driverStatus}.`);
+      return;
+    }
+
+    setTogglingAvailability(true);
+    const newStatus = isOnline ? 'OFFLINE' : 'ONLINE';
+
+    try {
+      let lat = null;
+      let lng = null;
+
+      if (newStatus === 'ONLINE' && 'geolocation' in navigator) {
+        await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              lat = pos.coords.latitude;
+              lng = pos.coords.longitude;
+              resolve();
+            },
+            () => resolve(),
+            { timeout: 5000 }
+          );
+        });
+      }
+
+      const res = await api.put('/driver/availability', {
+        availability: newStatus,
+        lat,
+        lng,
+      });
+
+      setIsOnline(newStatus === 'ONLINE');
+      if (res.data?.profile) {
+        setDriverProfile(res.data.profile);
+      }
+
+      if (newStatus === 'ONLINE') {
+        toast.success('🟢 You are now ONLINE & receiving ride requests!');
+        fetchAvailableRides();
+      } else {
+        toast('🔴 You are now OFFLINE', { icon: '🛑' });
+      }
+    } catch (err) {
+      console.error('Failed to toggle availability:', err);
+      toast.error(err.response?.data?.message || 'Failed to update status');
+    } finally {
+      setTogglingAvailability(false);
+    }
+  };
 
   const handleAcceptRide = async (rideId) => {
     setAcceptingId(rideId);
@@ -103,6 +223,9 @@ const DashboardPage = () => {
       setAcceptingId(null);
     }
   };
+
+  // Driver Approval Status
+  const driverStatus = driverProfile?.status || user?.driverProfile?.status || 'PENDING';
 
   if (loading || (!user && isFetching)) {
     return (
@@ -146,10 +269,37 @@ const DashboardPage = () => {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                   Welcome back, {user.name?.split(' ')[0]} 👋
                 </h1>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  ONLINE
-                </span>
+                
+                {/* Dynamic Status Badges */}
+                {driverStatus === 'APPROVED' && (
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
+                    isOnline
+                      ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
+                      : 'bg-gray-500/15 border border-gray-500/30 text-gray-400'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
+                    {isOnline ? 'ONLINE' : 'OFFLINE'}
+                  </span>
+                )}
+
+                {driverStatus === 'PENDING' && (
+                  <span className="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-semibold">
+                    ⏳ PENDING APPROVAL
+                  </span>
+                )}
+
+                {driverStatus === 'REJECTED' && (
+                  <span className="px-3 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-semibold">
+                    ❌ REJECTED
+                  </span>
+                )}
+
+                {driverStatus === 'SUSPENDED' && (
+                  <span className="px-3 py-1 rounded-full bg-red-900/30 border border-red-700 text-red-400 text-xs font-semibold">
+                    🚫 SUSPENDED
+                  </span>
+                )}
+
                 <span className="px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-400 text-xs font-semibold">
                   🚕 Driver Partner
                 </span>
@@ -164,7 +314,7 @@ const DashboardPage = () => {
             <button
               onClick={() => loadAllData(true)}
               disabled={isRefreshing}
-              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-sm font-semibold text-white transition-all duration-200 flex items-center gap-2 disabled:opacity-50"
+              className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-sm font-semibold text-white transition-all duration-200 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               <svg
                 className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`}
@@ -177,14 +327,107 @@ const DashboardPage = () => {
               {isRefreshing ? 'Refreshing...' : 'Refresh'}
             </button>
 
-            <button
-              onClick={logout}
-              className="px-4 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-sm font-semibold text-red-400 transition-all duration-200"
-            >
-              Logout
-            </button>
           </div>
         </div>
+
+        {/* ── DRIVER APPROVAL STATUS SECTION ── */}
+        
+        {/* 🔴 CASE 1: PENDING VERIFICATION */}
+        {driverStatus === 'PENDING' && (
+          <div className="bg-amber-500/10 border border-amber-500/30 text-amber-200 p-6 rounded-3xl shadow-xl flex items-start gap-4">
+            <div className="text-3xl p-2 bg-amber-500/20 rounded-2xl">⏳</div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-amber-400">Application Under Review</h3>
+              <p className="text-sm text-amber-200/90 leading-relaxed">
+                Your driver documents (Driver License & Vehicle RC) have been submitted to Admin. 
+                You will be able to click <strong>&quot;Go Online&quot;</strong> as soon as Admin approves your profile.
+              </p>
+              <div className="pt-2 flex items-center gap-2 text-xs text-amber-300 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                <span>Verification typically takes 2–4 business hours.</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🔴 CASE 2: REJECTED */}
+        {driverStatus === 'REJECTED' && (
+          <div className="bg-red-500/10 border border-red-500/30 text-red-200 p-6 rounded-3xl shadow-xl flex items-start gap-4">
+            <div className="text-3xl p-2 bg-red-500/20 rounded-2xl">❌</div>
+            <div className="space-y-2 flex-1">
+              <h3 className="text-lg font-bold text-red-400">Application Rejected</h3>
+              <p className="text-sm text-red-200/90 leading-relaxed">
+                Reason: <strong>{driverProfile?.rejectReason || 'Documents blurred or invalid'}</strong>.
+              </p>
+              <button
+                onClick={() => toast('Please contact support to re-upload documents.', { icon: '📄' })}
+                className="mt-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl shadow-lg transition-all cursor-pointer"
+              >
+                Re-upload Documents
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 🔴 CASE 3: SUSPENDED */}
+        {driverStatus === 'SUSPENDED' && (
+          <div className="bg-red-950/40 border border-red-700 text-red-200 p-6 rounded-3xl shadow-xl flex items-start gap-4">
+            <div className="text-3xl p-2 bg-red-900/30 rounded-2xl">🚫</div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-red-400">Driver Partner Account Suspended</h3>
+              <p className="text-sm text-red-200/90 leading-relaxed">
+                Your driver partner privileges have been temporarily suspended by Admin. Please reach out to RideFlow Operations Support for assistance.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* 🟢 CASE 4: APPROVED (FULL DRIVER CONTROLS & GO ONLINE BAR) */}
+        {driverStatus === 'APPROVED' && (
+          <div className={`p-6 rounded-3xl border shadow-2xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-6 ${
+            isOnline
+              ? 'bg-gradient-to-r from-emerald-950/80 via-emerald-900/60 to-slate-900 border-emerald-500/40'
+              : 'bg-gradient-to-r from-gray-900 via-slate-900 to-gray-950 border-white/10'
+          }`}>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{isOnline ? '🟢' : '🔴'}</span>
+                <h2 className="text-xl sm:text-2xl font-extrabold text-white">
+                  {isOnline ? 'You are Online' : 'You are Offline'}
+                </h2>
+              </div>
+              <p className="text-sm text-gray-300">
+                {isOnline
+                  ? 'Streaming live GPS location to nearby riders and receiving requests...'
+                  : 'Go online to start receiving ride offers and live passenger pings'}
+              </p>
+            </div>
+
+            <button
+              onClick={toggleAvailability}
+              disabled={togglingAvailability}
+              className={`px-8 py-3.5 rounded-2xl font-extrabold text-sm tracking-wide transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer ${
+                isOnline
+                  ? 'bg-red-500 hover:bg-red-600 active:scale-95 text-white shadow-red-500/30'
+                  : 'bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white shadow-emerald-500/30'
+              } disabled:opacity-50`}
+            >
+              {togglingAvailability ? (
+                <>
+                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Updating...
+                </>
+              ) : isOnline ? (
+                'GO OFFLINE'
+              ) : (
+                'GO ONLINE'
+              )}
+            </button>
+          </div>
+        )}
 
         {/* ── Stats Grid ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -235,10 +478,10 @@ const DashboardPage = () => {
             </div>
             <div className="mt-4">
               <div className="text-3xl font-extrabold text-white tracking-tight">
-                {availableRides.length}
+                {isOnline && driverStatus === 'APPROVED' ? availableRides.length : 0}
               </div>
               <p className="text-xs text-sky-400 mt-1 font-medium">
-                Pings waiting for acceptance
+                {isOnline ? 'Pings waiting for acceptance' : 'Go online to receive'}
               </p>
             </div>
           </div>
@@ -253,10 +496,10 @@ const DashboardPage = () => {
             </div>
             <div className="mt-4">
               <div className="text-3xl font-extrabold text-white tracking-tight flex items-baseline gap-1">
-                4.9 <span className="text-sm font-normal text-gray-400">/ 5.0</span>
+                {driverProfile?.rating?.toFixed(1) || '4.9'} <span className="text-sm font-normal text-gray-400">/ 5.0</span>
               </div>
               <p className="text-xs text-amber-400 mt-1 font-medium">
-                Top Rated Driver Partner
+                Verified Driver Partner
               </p>
             </div>
           </div>
@@ -268,7 +511,7 @@ const DashboardPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold text-white tracking-tight">Available Ride Requests</h2>
-              {availableRides.length > 0 && (
+              {isOnline && driverStatus === 'APPROVED' && availableRides.length > 0 && (
                 <span className="px-2.5 py-0.5 rounded-full bg-orange-500 text-white text-xs font-bold animate-pulse">
                   {availableRides.length} LIVE
                 </span>
@@ -277,7 +520,38 @@ const DashboardPage = () => {
             <span className="text-xs text-gray-400 hidden sm:inline-block">Auto-updates every 15s</span>
           </div>
 
-          {availableRides.length === 0 ? (
+          {/* If NOT approved */}
+          {driverStatus !== 'APPROVED' ? (
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-10 text-center space-y-4 shadow-xl">
+              <div className="text-5xl">🔒</div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-white">Ride Requests Locked</h3>
+                <p className="text-sm text-gray-400 max-w-md mx-auto">
+                  {driverStatus === 'PENDING'
+                    ? 'Your driver application is currently under admin verification. Ride requests will unlock automatically once approved.'
+                    : 'Ride requests are unavailable for your current account status.'}
+                </p>
+              </div>
+            </div>
+          ) : !isOnline ? (
+            /* If Approved but OFFLINE */
+            <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-10 text-center space-y-4 shadow-xl">
+              <div className="text-5xl">💤</div>
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold text-white">You Are Currently Offline</h3>
+                <p className="text-sm text-gray-400 max-w-md mx-auto">
+                  Tap the <strong>&quot;GO ONLINE&quot;</strong> button above to start broadcasting your location and receive live ride requests.
+                </p>
+              </div>
+              <button
+                onClick={toggleAvailability}
+                className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-bold rounded-xl shadow-lg transition-all duration-200 cursor-pointer"
+              >
+                Go Online Now
+              </button>
+            </div>
+          ) : availableRides.length === 0 ? (
+            /* If Approved, Online, but No Pending Requests */
             <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-10 text-center space-y-4 shadow-xl">
               <div className="text-5xl">📡</div>
               <div className="space-y-1">
@@ -288,12 +562,13 @@ const DashboardPage = () => {
               </div>
               <button
                 onClick={() => fetchAvailableRides()}
-                className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-xl shadow-lg transition-all duration-200"
+                className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold rounded-xl shadow-lg transition-all duration-200 cursor-pointer"
               >
                 Check for Requests Now
               </button>
             </div>
           ) : (
+            /* If Approved, Online, and Requests Available */
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {availableRides.map((ride) => (
                 <div
@@ -364,7 +639,7 @@ const DashboardPage = () => {
                     <button
                       onClick={() => handleAcceptRide(ride.id)}
                       disabled={acceptingId === ride.id}
-                      className="flex-1 py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-[0_4px_16px_rgba(255,90,0,0.4)] hover:shadow-[0_6px_22px_rgba(255,90,0,0.5)] transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="flex-1 py-3 px-4 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-[0_4px_16px_rgba(255,90,0,0.4)] hover:shadow-[0_6px_22px_rgba(255,90,0,0.5)] transition-all duration-200 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
                     >
                       {acceptingId === ride.id ? (
                         <>

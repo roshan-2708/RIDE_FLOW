@@ -9,7 +9,9 @@ const navItems = [
     {
         section: 'MAIN',
         links: [
-            { label: 'Dashboard', href: '/admin', icon: '📊' }
+            { label: 'Dashboard', href: '/admin', icon: '📊' },
+            { label: 'Live City Radar', href: '/admin/map', icon: '🌐' },
+            { label: 'Fare Rates', href: '/admin/fares', icon: '💰' }
         ]
     },
     {

@@ -62,11 +62,31 @@ const getAllVehicleEstimates = (distance, duration, surgeFactor = 1.0) => {
         estimates[vehicleType] = calculateFare(distance, duration, vehicleType, surgeFactor);
     });
     return estimates;
-}
+};
+
+const getFareConfig = () => ({ ...FARE_CONFIG });
+
+const updateFareConfig = (updates) => {
+    if (typeof updates === 'object') {
+        Object.keys(updates).forEach(vType => {
+            if (FARE_CONFIG[vType]) {
+                FARE_CONFIG[vType] = {
+                    ...FARE_CONFIG[vType],
+                    ...updates[vType]
+                };
+            }
+        });
+    }
+    return { ...FARE_CONFIG };
+};
 
 module.exports = {
+    FARE_CONFIG,
     calculateFare,
-    getAllVehicleEstimates
+    getAllVehicleEstimates,
+    getFareConfig,
+    updateFareConfig
 };
+
 
 

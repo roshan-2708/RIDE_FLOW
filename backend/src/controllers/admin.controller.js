@@ -408,3 +408,49 @@ exports.getAllRides = async (req, res) => {
         });
     }
 };
+
+const { getFareConfig, updateFareConfig, calculateFare } = require('../utils/fare.utils');
+
+// Get Fare Configurations
+exports.getFareRates = async (req, res) => {
+    try {
+        const fares = getFareConfig();
+        return res.status(200).json({
+            success: true,
+            message: 'Fare rates fetched successfully',
+            data: fares
+        });
+    } catch (error) {
+        console.log('Error in get fare rates controller', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server issue'
+        });
+    }
+};
+
+// Update Fare Configurations
+exports.updateFareRates = async (req, res) => {
+    try {
+        const { rates } = req.body;
+        if (!rates || typeof rates !== 'object') {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid rates payload'
+            });
+        }
+
+        const updated = updateFareConfig(rates);
+        return res.status(200).json({
+            success: true,
+            message: 'Fare rates updated successfully',
+            data: updated
+        });
+    } catch (error) {
+        console.log('Error in update fare rates controller', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server issue'
+        });
+    }
+};

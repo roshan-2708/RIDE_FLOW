@@ -144,7 +144,7 @@ export default function SingleDriverApplicationPage() {
                         <p style={{ fontWeight: '600', marginBottom: '8px' }}>💳 Driving License</p>
                         {driver.licensePhoto ? (
                             <img
-                                src={driver.licensePhoto.startsWith('http') ? driver.licensePhoto : `http://localhost:5000/${driver.licensePhoto}`}
+                                src={driver.licensePhoto.startsWith('http') ? driver.licensePhoto : `http://localhost:5000${driver.licensePhoto.startsWith('/') ? '' : '/'}${driver.licensePhoto}`}
                                 alt="License Photo"
                                 style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '6px' }}
                             />
@@ -158,7 +158,7 @@ export default function SingleDriverApplicationPage() {
                         <p style={{ fontWeight: '600', marginBottom: '8px' }}>📜 Vehicle RC</p>
                         {driver.rcPhoto ? (
                             <img
-                                src={driver.rcPhoto.startsWith('http') ? driver.rcPhoto : `http://localhost:5000/${driver.rcPhoto}`}
+                                src={driver.rcPhoto.startsWith('http') ? driver.rcPhoto : `http://localhost:5000${driver.rcPhoto.startsWith('/') ? '' : '/'}${driver.rcPhoto}`}
                                 alt="RC Photo"
                                 style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '6px' }}
                             />
@@ -172,7 +172,7 @@ export default function SingleDriverApplicationPage() {
                         <p style={{ fontWeight: '600', marginBottom: '8px' }}>🚘 Vehicle Photo</p>
                         {driver.vehiclePhoto ? (
                             <img
-                                src={driver.vehiclePhoto.startsWith('http') ? driver.vehiclePhoto : `http://localhost:5000/${driver.vehiclePhoto}`}
+                                src={driver.vehiclePhoto.startsWith('http') ? driver.vehiclePhoto : `http://localhost:5000${driver.vehiclePhoto.startsWith('/') ? '' : '/'}${driver.vehiclePhoto}`}
                                 alt="Vehicle Photo"
                                 style={{ width: '100%', height: '180px', objectFit: 'cover', borderRadius: '6px' }}
                             />
@@ -182,6 +182,7 @@ export default function SingleDriverApplicationPage() {
                     </div>
                 </div>
             </div>
+
 
             {/* Admin Actions Bar */}
             <div style={{ display: 'flex', gap: '12px', marginTop: '30px', borderTop: '1px solid #DDD', paddingTop: '20px' }}>

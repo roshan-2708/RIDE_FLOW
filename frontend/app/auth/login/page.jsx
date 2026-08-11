@@ -40,7 +40,7 @@ const LoginPage = () => {
       login(res.data.user, token);
       toast.success(`Welcome back, ${res.data.user.name || 'User'} 👋`);
 
-      if (res.data.user.role === 'DRIVER') router.push('/dashboard');
+      if (res.data.user.role === 'DRIVER') router.push('/driver/dashboard');
       else if (res.data.user.role === 'ADMIN') router.push('/admin');
       else router.push('/');
     } catch (error) {

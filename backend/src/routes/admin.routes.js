@@ -10,7 +10,9 @@ const {
     rejectApplication,
     suspendDriver,
     getAllUser,
-    getAllRides
+    getAllRides,
+    getFareRates,
+    updateFareRates
 } = require('../controllers/admin.controller');
 
 // All admin routes require authentication and ADMIN role
@@ -34,4 +36,9 @@ router.get('/users', getAllUser);
 // Rides Management
 router.get('/rides', getAllRides);
 
+// Fare Rates & Pricing Configuration
+router.get('/fares', getFareRates);
+router.put('/fares', updateFareRates);
+
 module.exports = router;
+
