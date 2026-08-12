@@ -229,10 +229,69 @@ const getAvailableRides = async (req, res) => {
     }
 };
 
+// cancel ride
+const cancelRide = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { reason } = req.body;
+
+        const userId = req.userId || req.user?.userId;
+
+        const ride = await prisma.ride.findUnique({
+            where: { id }
+        });
+
+        if (!ride) {
+            return res.status(404).json({
+                success: false,
+                message: 'Ride not found'
+            });
+        }
+
+        if (ride.riderId !== userId && ride.driverId !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: "you can't cancel this ride "
+            });
+        }
+
+        if (['COMPLETED', 'CANCELED'].includes(ride.status)) {
+            return res.status(403).json({
+                success: false,
+                message: "ride is already completed or cancelled"
+            });
+        }
+
+        const updateRide = await prisma.ride.update({
+            where: { id },
+            data: {
+                status: 'CANCELED',
+                cancelledAt: new Date(),
+                cancelReason: reason || 'Canceled by user'
+            }
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: "ride cancel successfully",
+            ride: updateRide
+        })
+
+
+    } catch (error) {
+        console.error("Error in cancel ride controller : -", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server issue",
+        });
+    }
+}
+
 module.exports = {
     getFareEstimates,
     bookRide,
     getMyRides,
     getSingleRide,
-    getAvailableRides
-};
+    getAvailableRides,
+    cancelRide
+};

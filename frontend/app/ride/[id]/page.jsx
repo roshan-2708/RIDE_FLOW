@@ -107,6 +107,8 @@ export default function RideDetailsPage() {
         toast.success('🚗 Your trip has started!');
       } else if (data.status === 'COMPLETED') {
         toast.success('🎉 Trip completed successfully!');
+      } else if (data.status === 'CANCELED') {
+        toast.error('❌ Trip was canceled');
       }
     };
 
@@ -228,6 +230,34 @@ export default function RideDetailsPage() {
     setChatInput('');
   };
 
+
+  const handleCancelCurrentRide = async () => {
+    if (!confirm('Are you sure you want to cancel this ride?')) return;
+
+    const reason = prompt('Reason for cancellation (optional):') || 'Cancelled by rider';
+    setActionLoading(true);
+
+    try {
+      const res = await api.post(`/rides/${rideId}/cancel`, { reason });
+      if (res.data?.success) {
+        toast.success('Ride cancelled successfully');
+
+        // Emit socket event to notify other party
+        if (socket) {
+          socket.emit('ride:cancel', { rideId, reason });
+        }
+
+        fetchRideDetails(true);
+      }
+    } catch (err) {
+      console.error('Cancel ride error:', err);
+      toast.error(err.response?.data?.message || 'Failed to cancel ride');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4 text-white">
@@ -266,7 +296,7 @@ export default function RideDetailsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 text-white font-[Poppins,sans-serif] px-4 sm:px-6 lg:px-8 py-8 relative overflow-hidden">
-      
+
       {/* Background Glow Blobs */}
       <div className="absolute top-0 right-1/4 w-[500px] h-[500px] rounded-full bg-orange-500/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-10 left-10 w-[400px] h-[400px] rounded-full bg-orange-600/10 blur-[100px] pointer-events-none" />
@@ -376,13 +406,22 @@ export default function RideDetailsPage() {
                     <span className="font-bold text-white">{ride.distance || '—'} km</span>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleCancelCurrentRide}
+                  disabled={actionLoading}
+                  className="w-full py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 rounded-xl text-xs font-bold transition-all cursor-pointer mt-2"
+                >
+                  ✕ Cancel Ride Request
+                </button>
               </div>
             )}
 
             {/* ── STAGE 2: ACCEPTED / ARRIVING ── */}
             {(ride.status === 'ACCEPTED' || ride.status === 'ARRIVING') && (
               <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
-                
+
                 {/* Driver / Rider Partner Profile Card */}
                 <div className="flex items-center justify-between border-b border-white/10 pb-4">
                   <div className="flex items-center gap-3.5">
@@ -469,13 +508,23 @@ export default function RideDetailsPage() {
                   </div>
                 )}
 
+                {/* Cancel Button */}
+                <button
+                  type="button"
+                  onClick={handleCancelCurrentRide}
+                  disabled={actionLoading}
+                  className="w-full py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/40 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                >
+                  ✕ Cancel Ride
+                </button>
+
               </div>
             )}
 
             {/* ── STAGE 3: STARTED (TRIP IN PROGRESS) ── */}
             {ride.status === 'STARTED' && (
               <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
-                
+
                 <div className="flex items-center gap-3 pb-4 border-b border-white/10">
                   <div className="w-10 h-10 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center text-xl animate-spin">
                     🧭
@@ -519,7 +568,7 @@ export default function RideDetailsPage() {
             {/* ── STAGE 4: COMPLETED ── */}
             {ride.status === 'COMPLETED' && (
               <div className="bg-white/5 backdrop-blur-md border border-emerald-500/30 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6 text-center">
-                
+
                 <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 text-3xl mx-auto flex items-center justify-center shadow-lg border border-emerald-500/30">
                   🎉
                 </div>
@@ -552,10 +601,33 @@ export default function RideDetailsPage() {
               </div>
             )}
 
+            {/* ── STAGE 5: CANCELED ── */}
+            {ride.status === 'CANCELED' && (
+              <div className="bg-white/5 backdrop-blur-md border border-red-500/30 rounded-3xl p-6 sm:p-7 shadow-xl space-y-5 text-center">
+                <div className="w-16 h-16 rounded-full bg-red-500/20 text-red-400 text-3xl mx-auto flex items-center justify-center border border-red-500/30">
+                  ✕
+                </div>
+
+                <div className="space-y-1">
+                  <h3 className="text-xl font-extrabold text-white">Ride Canceled</h3>
+                  <p className="text-xs text-gray-400">
+                    Reason: <span className="text-red-400">{ride.cancelReason || 'Canceled by user'}</span>
+                  </p>
+                </div>
+
+                <Link
+                  href={isDriver ? '/driver/dashboard' : '/book-ride'}
+                  className="w-full block py-3.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all"
+                >
+                  {isDriver ? 'Return to Driver Dashboard 🚕' : 'Book Another Ride 🚀'}
+                </Link>
+              </div>
+            )}
+
             {/* ── Route Summary Card ── */}
             <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-5 shadow-xl space-y-3">
               <h4 className="text-xs font-bold uppercase text-gray-400 tracking-wider">Route Details</h4>
-              
+
               <div className="space-y-3 relative pl-6 border-l-2 border-dashed border-orange-500/40 my-1 text-xs">
                 <div>
                   <span className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center text-[9px] font-bold text-white">
@@ -582,7 +654,7 @@ export default function RideDetailsPage() {
         {/* ── Realtime In-Ride Chat Drawer / Floating Modal ── */}
         {showChat && (
           <div className="fixed bottom-6 right-6 w-96 max-w-[calc(100vw-3rem)] bg-gray-900/95 backdrop-blur-2xl border border-white/20 rounded-3xl shadow-2xl overflow-hidden z-50 flex flex-col">
-            
+
             {/* Chat Header */}
             <div className="p-4 bg-white/10 border-b border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -612,11 +684,10 @@ export default function RideDetailsPage() {
                   return (
                     <div key={index} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                       <span className="text-[10px] text-gray-400 mb-0.5">{msg.senderName} ({msg.senderRole})</span>
-                      <div className={`px-3.5 py-2 rounded-2xl max-w-[80%] ${
-                        isMe
+                      <div className={`px-3.5 py-2 rounded-2xl max-w-[80%] ${isMe
                           ? 'bg-orange-500 text-white rounded-br-none'
                           : 'bg-white/10 text-gray-200 rounded-bl-none'
-                      }`}>
+                        }`}>
                         {msg.message}
                       </div>
                     </div>

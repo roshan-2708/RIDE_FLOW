@@ -6,7 +6,8 @@ const {
     bookRide,
     getMyRides,
     getSingleRide,
-    getAvailableRides
+    getAvailableRides,
+    cancelRide
 } = require('../controllers/ride.controller');
 
 // All ride endpoints require authentication
@@ -17,5 +18,6 @@ router.post('/book', bookRide);
 router.get('/my-rides', getMyRides);
 router.get('/available', getAvailableRides);
 router.get('/:id', getSingleRide);
+router.post("/:id/cancel", cancelRide);
 
 module.exports = router;

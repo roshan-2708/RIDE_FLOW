@@ -147,6 +147,15 @@ const initializeSocket = (ioOrServer) => {
             console.log(`Left room : ${rideId}`);
         });
 
+        socket.on('ride:cancel', (data) => {
+            const { rideId, reason } = typeof data === 'object' ? data : { rideId: data };
+            io.to(`ride_${rideId}`).emit('ride:status-changed', {
+                status: 'CANCELED',
+                message: `Ride cancelled : ${reason || 'Cancelled by user'}`,
+                rideId
+            });
+        });
+
 
         // user send message
         socket.on('chat:send-message', (data) => {

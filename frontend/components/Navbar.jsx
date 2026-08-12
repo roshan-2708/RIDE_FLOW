@@ -24,10 +24,14 @@ const Navbar = () => {
 
     const navLinks = [
         { label: 'Home', href: '/' },
+
+        
+        { label: 'Book a Ride', href: '/book-ride' },
+        { label: 'My Trips', href: '/ride' },
+
+
         { label: 'About Us', href: '/about' },
         { label: 'Safety', href: '/safety' },
-        { label: 'Careers', href: '/careers' },
-        { label: 'Blog & Press', href: '/blog' },
         { label: 'Contact Us', href: '/contact' },
     ];
 

@@ -33,6 +33,23 @@ export default function RidesOverviewPage() {
     }
   };
 
+  const handleCancelRide = async (rideId) => {
+    const reason = prompt('Please enter a reason for cancellation (optional):') || 'Changed my mind';
+
+    if (!reason) return;
+
+    try {
+      const res = await api.post(`/rides/${rideId}/cancel`, { reason });
+      if (res?.data?.success) {
+        alert('Ride cancelled');
+        fetchMyRides();
+      }
+    } catch (error) {
+      console.error('Error cancelling ride:', error);
+      alert('Failed to cancel ride');
+    }
+  }
+
   if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center gap-4 text-white">
@@ -47,7 +64,7 @@ export default function RidesOverviewPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 text-white font-[Poppins,sans-serif] px-4 sm:px-6 lg:px-8 py-10">
       <div className="max-w-4xl mx-auto space-y-8">
-        
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white">Your Trips &amp; Active Rides</h1>
@@ -89,12 +106,23 @@ export default function RidesOverviewPage() {
                     <p className="text-xs text-gray-400">Destination</p>
                     <p className="text-sm font-semibold truncate">{ride.dropoffAddress}</p>
                   </div>
-                  <Link
-                    href={`/ride/${ride.id}`}
-                    className="block w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-center text-xs font-bold rounded-xl shadow-md transition-all"
-                  >
-                    Open Live Trip Tracker →
-                  </Link>
+                  <div className="flex gap-2">
+                    <Link
+                      href={`/ride/${ride.id}`}
+                      className="flex-1 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-center text-xs font-bold rounded-xl shadow-md transition-all"
+                    >
+                      Open Live Trip Tracker →
+                    </Link>
+                    {['REQUESTED', 'ACCEPTED', 'ARRIVING'].includes(ride.status) && (
+                      <button
+                        type="button"
+                        onClick={() => handleCancelRide(ride.id)}
+                        className="px-4 py-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-xs font-bold rounded-xl transition-all"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -145,6 +173,28 @@ export default function RidesOverviewPage() {
                       <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/10 text-gray-300">
                         {ride.status}
                       </span>
+                      {['REQUESTED', 'ACCEPTED', 'ARRIVING'].includes(ride.status) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleCancelRide(ride.id);
+                          }}
+                          style={{
+                            backgroundColor: '#ef4444',
+                            color: 'white',
+                            padding: '6px 12px',
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            marginTop: '8px'
+                          }}
+                        >
+                          ✕ Cancel Ride
+                        </button>
+                      )}
+
                     </div>
                   </div>
                 </Link>
