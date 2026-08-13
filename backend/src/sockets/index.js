@@ -156,6 +156,34 @@ const initializeSocket = (ioOrServer) => {
             });
         });
 
+        // Cash on delivery payment events
+        socket.on('payment:cash-requested', (data) => {
+            const { rideId, amount } = typeof data === 'object' ? data : { rideId: data };
+            console.log(`Cash payment requested for ride ${rideId}`);
+            io.to(`ride_${rideId}`).emit('payment:cash-requested', {
+                rideId,
+                amount,
+                paymentStatus: 'CASH_PENDING'
+            });
+            io.to(`ride_${rideId}`).emit('ride:payment-updated', {
+                rideId,
+                paymentStatus: 'CASH_PENDING'
+            });
+        });
+
+        socket.on('payment:cash-confirmed', (data) => {
+            const { rideId } = typeof data === 'object' ? data : { rideId: data };
+            console.log(`Cash payment confirmed for ride ${rideId}`);
+            io.to(`ride_${rideId}`).emit('payment:cash-confirmed', {
+                rideId,
+                paymentStatus: 'PAID'
+            });
+            io.to(`ride_${rideId}`).emit('ride:payment-updated', {
+                rideId,
+                paymentStatus: 'PAID'
+            });
+        });
+
 
         // user send message
         socket.on('chat:send-message', (data) => {

@@ -9,6 +9,7 @@ import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
 import InRideCallModal from '@/components/InRideCallModal';
+import PaymentModal from '@/components/PaymentModal';
 
 // Dynamic import for Leaflet map component with ssr disabled
 const LiveRideMap = dynamic(() => import('@/components/LiveRideMap'), {
@@ -62,6 +63,9 @@ export default function RideDetailsPage() {
 
   // In-Ride WebRTC Call
   const [showCallModal, setShowCallModal] = useState(false);
+
+  // Payment Modal State
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Fetch full ride details
   const fetchRideDetails = useCallback(async (quiet = false) => {
@@ -144,12 +148,39 @@ export default function RideDetailsPage() {
       setTimeout(() => chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     };
 
+    // Cash on delivery payment updates
+    const handleCashRequested = (data) => {
+      console.log('Socket payment:cash-requested received:', data);
+      fetchRideDetails(true);
+      if (user?.role === 'DRIVER' || user?.id === ride?.driverId) {
+        toast('💵 Passenger indicated Cash Payment. Collect cash & confirm.', { icon: '💰', duration: 6000 });
+      }
+    };
+
+    const handleCashConfirmed = (data) => {
+      console.log('Socket payment:cash-confirmed received:', data);
+      fetchRideDetails(true);
+      setShowPaymentModal(false);
+      toast.success('🎉 Cash payment confirmed! Trip is settled.');
+    };
+
+    const handlePaymentUpdated = (data) => {
+      console.log('Socket ride:payment-updated received:', data);
+      fetchRideDetails(true);
+      if (data?.paymentStatus === 'PAID') {
+        setShowPaymentModal(false);
+      }
+    };
+
     socket.on('ride:status-changed', handleStatusChanged);
     socket.on('ride:accepted', handleDriverAccepted);
     socket.on('ride:started', handleDriverStarted);
     socket.on('ride:completed', handleDriverCompleted);
     socket.on('driver:location:update', handleLocationUpdate);
     socket.on('chat:new-message', handleChatMessage);
+    socket.on('payment:cash-requested', handleCashRequested);
+    socket.on('payment:cash-confirmed', handleCashConfirmed);
+    socket.on('ride:payment-updated', handlePaymentUpdated);
 
     return () => {
       socket.emit('ride:leave-room', rideId);
@@ -159,8 +190,11 @@ export default function RideDetailsPage() {
       socket.off('ride:completed', handleDriverCompleted);
       socket.off('driver:location:update', handleLocationUpdate);
       socket.off('chat:new-message', handleChatMessage);
+      socket.off('payment:cash-requested', handleCashRequested);
+      socket.off('payment:cash-confirmed', handleCashConfirmed);
+      socket.off('ride:payment-updated', handlePaymentUpdated);
     };
-  }, [socket, rideId, ride?.driverId, fetchRideDetails]);
+  }, [socket, rideId, ride?.driverId, fetchRideDetails, user?.id, user?.role]);
 
   // Driver Action: Arrived at Pickup
   const handleArrivedAtPickup = () => {
@@ -176,9 +210,13 @@ export default function RideDetailsPage() {
   // Driver Action: Verify PIN & Start Ride
   const handleStartRide = async (e) => {
     if (e) e.preventDefault();
+    if (!pinInput.trim()) {
+      toast.error('Please enter the 4-digit passenger PIN');
+      return;
+    }
     setActionLoading(true);
     try {
-      const res = await api.put(`/driver/start/${rideId}`, { pin: pinInput });
+      const res = await api.put(`/driver/start/${rideId}`, { pin: pinInput.trim() });
       toast.success(res.data?.message || 'Ride started successfully! 🚀');
 
       if (socket) {
@@ -213,6 +251,26 @@ export default function RideDetailsPage() {
     } catch (error) {
       console.error('Complete ride error:', error);
       toast.error(error.response?.data?.message || 'Failed to complete trip.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Driver Action: Confirm Passenger Gave Cash
+  const handleConfirmCashPayment = async () => {
+    setActionLoading(true);
+    try {
+      const res = await api.post('/payment/cash/confirm', { rideId });
+      if (res.data?.success) {
+        toast.success('💵 Cash payment confirmed! Fare added to your earnings. 🎉');
+        if (socket) {
+          socket.emit('payment:cash-confirmed', { rideId });
+        }
+        fetchRideDetails(true);
+      }
+    } catch (err) {
+      console.error('Confirm cash payment error:', err);
+      toast.error(err.response?.data?.message || 'Failed to confirm cash payment');
     } finally {
       setActionLoading(false);
     }
@@ -468,20 +526,22 @@ export default function RideDetailsPage() {
                   )}
                 </div>
 
-                {/* 4-Digit Security PIN Banner */}
-                <div className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/15 via-amber-500/10 to-transparent border border-orange-500/30 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-orange-400 block">
-                      Ride Security PIN
-                    </span>
-                    <p className="text-xs text-gray-400">
-                      {isDriver ? 'Ask passenger for PIN before starting' : 'Share with driver when boarding'}
-                    </p>
+                {/* 4-Digit Security PIN Banner (RIDER ONLY) */}
+                {!isDriver && (
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/15 via-amber-500/10 to-transparent border border-orange-500/30 flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-orange-400 block">
+                        🔑 Ride Security PIN
+                      </span>
+                      <p className="text-xs text-gray-300 mt-0.5">
+                        Share this PIN with your driver when boarding to start the ride
+                      </p>
+                    </div>
+                    <div className="px-4 py-2 rounded-xl bg-gray-950/90 border border-orange-500/50 text-xl font-mono font-black text-orange-400 tracking-widest shadow-inner">
+                      {securityPin}
+                    </div>
                   </div>
-                  <div className="px-4 py-2 rounded-xl bg-gray-950/80 border border-orange-500/40 text-lg font-mono font-extrabold text-orange-400 tracking-widest shadow-inner">
-                    {securityPin}
-                  </div>
-                </div>
+                )}
 
                 {/* DRIVER CONTROLS (Stage 1 / 2) */}
                 {isDriver && (
@@ -496,10 +556,11 @@ export default function RideDetailsPage() {
                     )}
 
                     {/* PIN Verification & Start Form */}
-                    <form onSubmit={handleStartRide} className="space-y-3">
-                      <label className="text-xs font-bold text-gray-300 block">
-                        Enter Passenger 4-Digit PIN to Start:
-                      </label>
+                    <form onSubmit={handleStartRide} className="space-y-3 p-4 rounded-2xl bg-gray-950/60 border border-white/10">
+                      <div className="flex items-center gap-2 text-xs font-bold text-gray-300">
+                        <span className="text-orange-400">🔒</span>
+                        <span>Ask passenger for their 4-digit PIN to start:</span>
+                      </div>
                       <div className="flex gap-2">
                         <input
                           type="text"
@@ -511,7 +572,7 @@ export default function RideDetailsPage() {
                         />
                         <button
                           type="submit"
-                          disabled={actionLoading}
+                          disabled={actionLoading || !pinInput.trim()}
                           className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center disabled:opacity-50 cursor-pointer"
                         >
                           {actionLoading ? 'Starting...' : 'Verify & Start 🚀'}
@@ -591,22 +652,85 @@ export default function RideDetailsPage() {
                   <p className="text-xs text-gray-400">Thank you for riding with RideFlow</p>
                 </div>
 
-                {/* Final Fare Display */}
+                {/* Final Fare & Live Payment Status */}
                 <div className="p-5 rounded-2xl bg-gray-950/80 border border-emerald-500/30 space-y-2">
-                  <span className="text-xs text-gray-400 uppercase font-semibold">Total Fare Collected</span>
+                  <span className="text-xs text-gray-400 uppercase font-semibold">Total Fare</span>
                   <div className="text-4xl font-extrabold text-emerald-400">
                     ₹{ride.actualFare || ride.estimatedFare}
                   </div>
                   <div className="flex justify-between text-xs text-gray-400 pt-2 border-t border-white/10">
-                    <span>Payment Status</span>
-                    <span className="font-bold text-emerald-400">PAID / COMPLETED</span>
+                    <span>Payment Status:</span>
+                    <span className={`font-bold ${
+                      ride.paymentStatus === 'PAID'
+                        ? 'text-emerald-400'
+                        : ride.paymentStatus === 'CASH_PENDING'
+                        ? 'text-amber-400'
+                        : 'text-amber-400'
+                    }`}>
+                      {ride.paymentStatus === 'PAID'
+                        ? '✅ PAID & SETTLED'
+                        : ride.paymentStatus === 'CASH_PENDING'
+                        ? '⏳ CASH PENDING DRIVER CONFIRMATION'
+                        : '⏳ UNPAID / DUE'}
+                    </span>
                   </div>
                 </div>
+
+                {/* DRIVER: Cash Confirmation Card (Before driver clicks yes passenger gave cash, do not show success) */}
+                {isDriver && ride.paymentStatus !== 'PAID' && (
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-left space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase text-amber-400">💵 Cash Payment Collection</span>
+                      <span className="text-xs font-extrabold text-white">Collect: ₹{ride.actualFare || ride.estimatedFare}</span>
+                    </div>
+                    <p className="text-xs text-gray-300">
+                      {ride.paymentStatus === 'CASH_PENDING'
+                        ? '⚠️ Passenger has marked Cash Payment. Please collect cash in hand and click below to confirm:'
+                        : `Collect ₹${ride.actualFare || ride.estimatedFare} in cash from passenger, or wait for online payment.`}
+                    </p>
+                    <button
+                      onClick={handleConfirmCashPayment}
+                      disabled={actionLoading}
+                      className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 active:scale-95 text-white font-extrabold text-sm rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {actionLoading ? 'Confirming Cash...' : `✅ Yes, Passenger Gave Cash (₹${ride.actualFare || ride.estimatedFare})`}
+                    </button>
+                  </div>
+                )}
+
+                {/* RIDER: Cash Pending Notification */}
+                {!isDriver && ride.paymentStatus === 'CASH_PENDING' && (
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-2">
+                    <div className="flex items-center justify-center gap-2 text-xs font-bold text-amber-300">
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                      <span>Awaiting Driver Cash Confirmation</span>
+                    </div>
+                    <p className="text-xs text-gray-300">
+                      You marked cash payment of <span className="font-bold text-white">₹{ride.actualFare || ride.estimatedFare}</span>. Please hand physical cash to your driver. As soon as your driver clicks &apos;Yes, Passenger Gave Cash&apos;, this trip will show settled!
+                    </p>
+                    <button
+                      onClick={() => setShowPaymentModal(true)}
+                      className="text-[11px] text-orange-400 hover:underline pt-1 cursor-pointer font-semibold"
+                    >
+                      Want to pay via UPI or Razorpay instead? Click here
+                    </button>
+                  </div>
+                )}
+
+                {/* RIDER: Unpaid (Not Cash Pending) -> Show Pay Now Button */}
+                {!isDriver && ride.paymentStatus !== 'PAID' && ride.paymentStatus !== 'CASH_PENDING' && (
+                  <button
+                    onClick={() => setShowPaymentModal(true)}
+                    className="w-full py-4 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-sm rounded-2xl shadow-[0_4px_20px_rgba(249,115,22,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  >
+                    💳 Pay ₹{ride.actualFare || ride.estimatedFare} (Cash / UPI / Razorpay)
+                  </button>
+                )}
 
                 {/* Navigation Button */}
                 <Link
                   href={isDriver ? '/driver/dashboard' : '/book-ride'}
-                  className="w-full block py-3.5 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold text-sm rounded-xl shadow-lg transition-all"
+                  className="w-full block py-3.5 bg-white/10 hover:bg-white/15 text-white font-bold text-sm rounded-xl transition-all"
                 >
                   {isDriver ? 'Return to Driver Dashboard 🚕' : 'Book Another Ride 🚀'}
                 </Link>
@@ -743,6 +867,15 @@ export default function RideDetailsPage() {
           isOpen={showCallModal}
           onClose={() => setShowCallModal(false)}
           isInitiator={showCallModal}
+        />
+
+        {/* ── Payment Modal (Cash / UPI / Razorpay) ── */}
+        <PaymentModal
+          ride={ride}
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onPaymentSuccess={() => fetchRideDetails(false)}
+          socket={socket}
         />
 
       </div>

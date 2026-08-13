@@ -78,6 +78,7 @@ const startRide = async (req, res) => {
     try {
         const driverId = req.userId || req.user?.userId;
         const { rideId } = req.params;
+        const { pin } = req.body;
 
         if (!rideId) {
             return res.status(400).json({
@@ -108,6 +109,15 @@ const startRide = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'Ride is not in ACCEPTED state',
+            });
+        }
+
+        // Verify Passenger 4-Digit Security PIN
+        const expectedPin = ride.id.replace(/-/g, '').slice(-4).toUpperCase();
+        if (!pin || pin.toString().trim().toUpperCase() !== expectedPin) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid 4-digit security PIN. Please ask the passenger for their PIN.',
             });
         }
 
