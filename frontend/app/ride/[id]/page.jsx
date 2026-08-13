@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
 import api from '@/lib/api';
+import InRideCallModal from '@/components/InRideCallModal';
 
 // Dynamic import for Leaflet map component with ssr disabled
 const LiveRideMap = dynamic(() => import('@/components/LiveRideMap'), {
@@ -58,6 +59,9 @@ export default function RideDetailsPage() {
   const [chatInput, setChatInput] = useState('');
   const [showChat, setShowChat] = useState(false);
   const chatBottomRef = useRef(null);
+
+  // In-Ride WebRTC Call
+  const [showCallModal, setShowCallModal] = useState(false);
 
   // Fetch full ride details
   const fetchRideDetails = useCallback(async (quiet = false) => {
@@ -331,6 +335,15 @@ export default function RideDetailsPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Audio Call Button (Active during Accepted, Arriving, and Started stages) */}
+            {(ride.status === 'ACCEPTED' || ride.status === 'ARRIVING' || ride.status === 'STARTED') && (
+              <button
+                onClick={() => setShowCallModal(true)}
+                className="px-4 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-xs font-bold text-emerald-400 transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/10"
+              >
+                📞 Call {isDriver ? 'Passenger' : 'Driver'}
+              </button>
+            )}
             <button
               onClick={() => setShowChat(!showChat)}
               className="px-4 py-2.5 rounded-xl bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-xs font-bold text-orange-400 transition-all flex items-center gap-2 cursor-pointer"
@@ -716,6 +729,21 @@ export default function RideDetailsPage() {
 
           </div>
         )}
+
+        {/* ── WebRTC In-Ride Audio Call Modal ── */}
+        <InRideCallModal
+          socket={socket}
+          rideId={rideId}
+          currentUserId={user?.id}
+          currentUserName={user?.name}
+          currentUserRole={user?.role}
+          otherUserId={isDriver ? (ride?.riderId || ride?.rider?.id) : (ride?.driverId || ride?.driver?.id)}
+          otherUserName={isDriver ? (ride?.rider?.name || 'Passenger') : (ride?.driver?.name || 'Driver Partner')}
+          otherUserRole={isDriver ? 'RIDER' : 'DRIVER'}
+          isOpen={showCallModal}
+          onClose={() => setShowCallModal(false)}
+          isInitiator={showCallModal}
+        />
 
       </div>
     </div>

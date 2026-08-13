@@ -170,6 +170,106 @@ const initializeSocket = (ioOrServer) => {
                 timestamp: new Date().toISOString()
             });
         });
+
+        // webrtc audio call signaling
+
+
+        // 1.caller initiate audio call
+        socket.on('call:user', (data) => {
+            const { rideId, toUserId, callerName, callerRole, offer } = data;
+            const targetSocketId = connectedUsers.get(toUserId);
+
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('call:incoming', {
+                    rideId,
+                    fromUserId: socket.userId,
+                    callerName,
+                    callerRole,
+                    offer,
+                    timestamp: new Date().toISOString()
+                });
+                console.log(`Call initiated : ${socket.userId} -> ${toUserId}`);
+            } else {
+                socket.to(`ride_${rideId}`).emit('call:incoming',
+                    {
+                        rideId,
+                        fromUserId: socket.userId,
+                        callerName,
+                        callerRole,
+                        offer
+                    }
+                );
+            }
+        });
+
+
+        // 2. caller answer audio call
+        socket.on('call:answer', (data) => {
+            const { rideId, toUserId, answer } = data;
+            const targetSocketId = connectedUsers.get(toUserId);
+
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('call:accepted', {
+                    fromUserId: socket.userId,
+                    answer,
+                });
+            } else {
+                socket.io(`ride_${rideId}`).emit('call:accepted', {
+                    fromUserId: socket.userId,
+                    answer,
+                });
+            }
+        });
+
+        // 3.exchange ICE candidates
+        socket.on('call:ice-candidate', (data) => {
+            const { rideId, toUserId, candidate } = data;
+            const targetSocketId = connectedUsers.get(toUserId);
+
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('call:ice-candidate', {
+                    fromUserId: socket.userId,
+                    candidate,
+                });
+            }
+            else {
+                socket.to(`ride_${rideId}`).emit('call:ice-candidate', {
+                    fromUserId: socket.userId,
+                    candidate
+                });
+            }
+        });
+
+        // 4.reject /decline call
+        socket.on('call:reject', (data) => {
+            const { rideId, toUserId } = data;
+            const targetSocketId = connectedUsers.get(toUserId);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('call:rejected', {
+                    fromUserId: socket.userId,
+                });
+            } else {
+                socket.to(`ride_${rideId}`).emit('call:rejected', {
+                    fromUserId: socket.userId,
+                });
+            }
+        });
+
+        // 5. End / Hangup Active Call
+        socket.on('call:end', (data) => {
+            const { rideId, toUserId } = data;
+            const targetSocketId = connectedUsers.get(toUserId);
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('call:ended', {
+                    fromUserId: socket.userId,
+                });
+            } else {
+                socket.to(`ride_${rideId}`).emit('call:ended', {
+                    fromUserId: socket.userId,
+                });
+            }
+        });
+
     });
     return io;
 };
