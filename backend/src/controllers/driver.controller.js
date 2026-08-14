@@ -172,12 +172,11 @@ const completeRide = async (req, res) => {
             }
         });
 
-        // Add earnings to driver profile
+        // Update driver status back to ONLINE and increment ride count
         await prisma.driverProfile.updateMany({
             where: { userId: driverId },
             data: {
                 availability: 'ONLINE',
-                totalEarnings: { increment: fareData.estimatedFare },
                 totalRides: { increment: 1 }
             }
         });
@@ -203,25 +202,32 @@ const getEarnings = async (req, res) => {
             where: { userId: driverId }
         });
 
+        if (!profile) {
+            return res.status(404).json({ success: false, message: 'Driver profile not found' });
+        }
+
         const recentRides = await prisma.ride.findMany({
             where: { driverId, status: 'COMPLETED' },
             orderBy: { completedAt: 'desc' },
             take: 10
         });
 
-        const completedStats = await prisma.ride.aggregate({
-            where: { driverId, status: 'COMPLETED' },
-            _sum: { actualFare: true, estimatedFare: true },
-            _count: { id: true }
+        // Sum up actual settled earnings from Earning table
+        const earningsAggregate = await prisma.earning.aggregate({
+            where: { driverId: profile.id, isPaid: true },
+            _sum: { amount: true }
         });
 
-        const calculatedEarnings = completedStats._sum.actualFare ?? completedStats._sum.estimatedFare ?? 0;
-        const totalEarnings = Math.max(profile?.totalEarnings || 0, calculatedEarnings);
-        const totalRides = Math.max(profile?.totalRides || 0, completedStats._count.id || 0);
+        const completedRidesCount = await prisma.ride.count({
+            where: { driverId, status: 'COMPLETED' }
+        });
+
+        const totalEarnings = earningsAggregate._sum.amount ?? profile.totalEarnings ?? 0;
+        const totalRides = Math.max(profile.totalRides || 0, completedRidesCount);
 
         return res.status(200).json({
             success: true,
-            totalEarnings,
+            totalEarnings: Number(totalEarnings.toFixed(2)),
             totalRides,
             recentRides
         });

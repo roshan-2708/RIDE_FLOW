@@ -19,28 +19,44 @@ const recordDriverSettlement = async (ride, amount, platformFee) => {
         });
 
         if (driverProfile) {
-            await prisma.earning.upsert({
-                where: { rideId: ride.id },
-                create: {
-                    driverId: driverProfile.id,
-                    rideId: ride.id,
-                    amount: split.driverEarning,
-                    isPaid: true,
-                    paidAt: new Date()
-                },
-                update: {
-                    amount: split.driverEarning,
-                    isPaid: true,
-                    paidAt: new Date()
-                }
+            const existingEarning = await prisma.earning.findUnique({
+                where: { rideId: ride.id }
             });
 
-            await prisma.driverProfile.update({
-                where: { id: driverProfile.id },
-                data: {
-                    totalEarnings: { increment: split.driverEarning }
-                }
-            });
+            if (!existingEarning) {
+                await prisma.earning.create({
+                    data: {
+                        driverId: driverProfile.id,
+                        rideId: ride.id,
+                        amount: split.driverEarning,
+                        isPaid: true,
+                        paidAt: new Date()
+                    }
+                });
+
+                await prisma.driverProfile.update({
+                    where: { id: driverProfile.id },
+                    data: {
+                        totalEarnings: { increment: split.driverEarning }
+                    }
+                });
+            } else if (!existingEarning.isPaid) {
+                await prisma.earning.update({
+                    where: { id: existingEarning.id },
+                    data: {
+                        amount: split.driverEarning,
+                        isPaid: true,
+                        paidAt: new Date()
+                    }
+                });
+
+                await prisma.driverProfile.update({
+                    where: { id: driverProfile.id },
+                    data: {
+                        totalEarnings: { increment: split.driverEarning }
+                    }
+                });
+            }
         }
     } catch (err) {
         console.error('Settlement error:', err);

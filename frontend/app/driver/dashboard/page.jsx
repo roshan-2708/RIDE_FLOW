@@ -131,7 +131,7 @@ const DashboardPage = () => {
             availability: 'ONLINE',
             lat: position.coords.latitude,
             lng: position.coords.longitude,
-          }).catch(() => {});
+          }).catch(() => { });
         },
         (err) => console.log('Geolocation position error:', err),
         { enableHighAccuracy: true }
@@ -157,7 +157,7 @@ const DashboardPage = () => {
   // Toggle Online/Offline Availability
   const toggleAvailability = async () => {
     const driverStatus = driverProfile?.status || user?.driverProfile?.status || 'PENDING';
-    
+
     if (driverStatus !== 'APPROVED') {
       toast.error(`Cannot go online. Application status is ${driverStatus}.`);
       return;
@@ -242,11 +242,11 @@ const DashboardPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-800 text-white font-[Poppins,sans-serif] px-4 sm:px-6 lg:px-8 py-10 relative overflow-hidden">
-      
+
       {/* Background Glow Blobs */}
       <div className="absolute top-0 right-1/4 w-[500px] h-[500px] rounded-full bg-orange-500/10 blur-[120px] pointer-events-none" />
       <div className="absolute bottom-10 left-10 w-[400px] h-[400px] rounded-full bg-orange-600/10 blur-[100px] pointer-events-none" />
-      
+
       {/* Grid Pattern */}
       <div
         className="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -257,7 +257,7 @@ const DashboardPage = () => {
       />
 
       <div className="relative z-10 max-w-7xl mx-auto space-y-8">
-        
+
         {/* ── Top Header Bar ── */}
         <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
@@ -269,14 +269,13 @@ const DashboardPage = () => {
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                   Welcome back, {user.name?.split(' ')[0]} 👋
                 </h1>
-                
+
                 {/* Dynamic Status Badges */}
                 {driverStatus === 'APPROVED' && (
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-                    isOnline
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${isOnline
                       ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400'
                       : 'bg-gray-500/15 border border-gray-500/30 text-gray-400'
-                  }`}>
+                    }`}>
                     <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-gray-400'}`} />
                     {isOnline ? 'ONLINE' : 'OFFLINE'}
                   </span>
@@ -331,7 +330,7 @@ const DashboardPage = () => {
         </div>
 
         {/* ── DRIVER APPROVAL STATUS SECTION ── */}
-        
+
         {/* 🔴 CASE 1: PENDING VERIFICATION */}
         {driverStatus === 'PENDING' && (
           <div className="bg-amber-500/10 border border-amber-500/30 text-amber-200 p-6 rounded-3xl shadow-xl flex items-start gap-4">
@@ -339,7 +338,7 @@ const DashboardPage = () => {
             <div className="space-y-1">
               <h3 className="text-lg font-bold text-amber-400">Application Under Review</h3>
               <p className="text-sm text-amber-200/90 leading-relaxed">
-                Your driver documents (Driver License & Vehicle RC) have been submitted to Admin. 
+                Your driver documents (Driver License & Vehicle RC) have been submitted to Admin.
                 You will be able to click <strong>&quot;Go Online&quot;</strong> as soon as Admin approves your profile.
               </p>
               <div className="pt-2 flex items-center gap-2 text-xs text-amber-300 font-semibold">
@@ -384,11 +383,10 @@ const DashboardPage = () => {
 
         {/* 🟢 CASE 4: APPROVED (FULL DRIVER CONTROLS & GO ONLINE BAR) */}
         {driverStatus === 'APPROVED' && (
-          <div className={`p-6 rounded-3xl border shadow-2xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-6 ${
-            isOnline
+          <div className={`p-6 rounded-3xl border shadow-2xl transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-6 ${isOnline
               ? 'bg-gradient-to-r from-emerald-950/80 via-emerald-900/60 to-slate-900 border-emerald-500/40'
               : 'bg-gradient-to-r from-gray-900 via-slate-900 to-gray-950 border-white/10'
-          }`}>
+            }`}>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{isOnline ? '🟢' : '🔴'}</span>
@@ -406,11 +404,10 @@ const DashboardPage = () => {
             <button
               onClick={toggleAvailability}
               disabled={togglingAvailability}
-              className={`px-8 py-3.5 rounded-2xl font-extrabold text-sm tracking-wide transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer ${
-                isOnline
+              className={`px-8 py-3.5 rounded-2xl font-extrabold text-sm tracking-wide transition-all shadow-xl flex items-center justify-center gap-2 cursor-pointer ${isOnline
                   ? 'bg-red-500 hover:bg-red-600 active:scale-95 text-white shadow-red-500/30'
                   : 'bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white shadow-emerald-500/30'
-              } disabled:opacity-50`}
+                } disabled:opacity-50`}
             >
               {togglingAvailability ? (
                 <>
@@ -431,7 +428,7 @@ const DashboardPage = () => {
 
         {/* ── Stats Grid ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          
+
           {/* Card 1: Total Earnings */}
           <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-xl hover:border-emerald-500/40 transition-all duration-300 group">
             <div className="flex items-center justify-between">
@@ -576,7 +573,7 @@ const DashboardPage = () => {
                   className="bg-white/5 backdrop-blur-md border border-white/10 hover:border-orange-500/50 rounded-3xl p-6 shadow-xl space-y-5 transition-all duration-300 hover:-translate-y-1 flex flex-col justify-between"
                 >
                   <div className="space-y-4">
-                    
+
                     {/* Header: Rider & Vehicle Badge */}
                     <div className="flex items-center justify-between border-b border-white/10 pb-4">
                       <div className="flex items-center gap-3">

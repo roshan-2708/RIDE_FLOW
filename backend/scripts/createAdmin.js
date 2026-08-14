@@ -19,7 +19,7 @@ async function main() {
     user = await prisma.user.update({
       where: { id: user.id },
       data: {
-        name: 'Admin',
+        name: 'Roshan Kumar',
         email,
         phone,
         role: 'ADMIN',
@@ -28,11 +28,11 @@ async function main() {
         status: 'ACTIVE'
       }
     });
-    console.log('✅ Admin user email updated:');
+    console.log('✅ Admin user updated:');
   } else {
     user = await prisma.user.create({
       data: {
-        name: 'Admin',
+        name: 'Roshan Kumar',
         email,
         phone,
         role: 'ADMIN',
