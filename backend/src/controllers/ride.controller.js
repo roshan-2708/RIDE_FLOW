@@ -1,6 +1,7 @@
 const prisma = require('../config/db');
-const { getDistanceAndDuration } = require('../services/map.services');
+const { getDistanceAndDuration, calculateHaversineDistance } = require('../services/map.services');
 const { calculateFare, getAllVehicleEstimates } = require('../utils/fare.utils');
+const { notifyNearbyDrivers, getDriverLocation } = require('../sockets');
 
 // get fare estimates
 const getFareEstimates = async (req, res) => {
@@ -97,11 +98,27 @@ const bookRide = async (req, res) => {
                 dropoffAddress: dropAddress || '',
                 status: 'REQUESTED',
             },
+            include: {
+                rider: {
+                    select: {
+                        id: true,
+                        name: true,
+                        phone: true,
+                        profilePhoto: true
+                    }
+                }
+            }
         });
+
+        // Dispatch real-time socket notification ONLY to drivers within 5km radius
+        const io = req.app.get('io');
+        if (io) {
+            notifyNearbyDrivers(io, ride, 5);
+        }
 
         return res.status(201).json({
             success: true,
-            message: 'Ride booked! Looking for drivers...',
+            message: 'Ride booked! Looking for drivers within 5km radius...',
             ride,
             farebreakdown: fareData.breakdown
         });
@@ -194,14 +211,49 @@ const getSingleRide = async (req, res) => {
     }
 };
 
-// get available (pending) rides for drivers
+// get available (pending) rides for drivers within 5km radius
 const getAvailableRides = async (req, res) => {
     try {
-        const rides = await prisma.ride.findMany({
-            where: {
-                status: 'REQUESTED',
-                driverId: null
-            },
+        const driverId = req.userId || req.user?.userId;
+
+        // 1. Fetch driver profile
+        const driverProfile = await prisma.driverProfile.findUnique({
+            where: { userId: driverId }
+        });
+
+        // 2. Extract driver coordinates (priority: query params -> socket live cache -> driver profile)
+        let lat = req.query.lat ? parseFloat(req.query.lat) : null;
+        let lng = req.query.lng ? parseFloat(req.query.lng) : null;
+
+        if (isNaN(lat) || isNaN(lng) || lat === null || lng === null) {
+            const socketLoc = getDriverLocation ? getDriverLocation(driverId) : null;
+            lat = socketLoc?.lat ?? driverProfile?.currentLat;
+            lng = socketLoc?.lng ?? driverProfile?.currentLng;
+        }
+
+        // 3. If driver location cannot be determined, inform client to supply GPS
+        if (typeof lat !== 'number' || typeof lng !== 'number') {
+            return res.status(200).json({
+                success: true,
+                locationRequired: true,
+                message: 'GPS location required to discover rides within 5km radius.',
+                radiusKm: 5,
+                rides: []
+            });
+        }
+
+        // 4. Query all requested rides that match driver's vehicle type (if applicable)
+        const whereClause = {
+            status: 'REQUESTED',
+            driverId: null
+        };
+
+        if (driverProfile?.vehicleType) {
+            whereClause.vehicleType = driverProfile.vehicleType;
+        }
+
+        const pendingRides = await prisma.ride.findMany({
+            where: whereClause,
             include: {
                 rider: {
                     select: {
@@ -215,10 +267,40 @@ const getAvailableRides = async (req, res) => {
             orderBy: { requestedAt: 'desc' }
         });
 
+        // 5. Filter rides within 5km radius using Haversine formula
+        const MAX_RADIUS_KM = 5.0;
+        const ridesWithinRadius = [];
+
+        for (const ride of pendingRides) {
+            if (typeof ride.pickupLat === 'number' && typeof ride.pickupLng === 'number') {
+                const { distance, duration } = calculateHaversineDistance(
+                    lat,
+                    lng,
+                    ride.pickupLat,
+                    ride.pickupLng
+                );
+
+                if (distance <= MAX_RADIUS_KM) {
+                    ridesWithinRadius.push({
+                        ...ride,
+                        distanceToPickup: distance, // km to pickup
+                        etaToPickup: duration       // minutes to pickup
+                    });
+                }
+            }
+        }
+
+        // Sort by nearest pickup first
+        ridesWithinRadius.sort((a, b) => a.distanceToPickup - b.distanceToPickup);
+
         return res.status(200).json({
             success: true,
-            rides
+            radiusKm: MAX_RADIUS_KM,
+            driverLocation: { lat, lng },
+            totalFound: ridesWithinRadius.length,
+            rides: ridesWithinRadius
         });
+
     } catch (error) {
         console.log("Error in get available rides controller", error.message);
         return res.status(500).json({

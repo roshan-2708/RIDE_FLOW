@@ -45,4 +45,13 @@ const calculateHaversineDistance = (lat1, lng1, lat2, lng2) => {
     return { distance, duration };
 };
 
-module.exports = { getDistanceAndDuration };
+// Calculate distance in km between two coordinate points
+const getDistanceInKm = (lat1, lng1, lat2, lng2) => {
+    return calculateHaversineDistance(lat1, lng1, lat2, lng2).distance;
+};
+
+module.exports = { 
+    getDistanceAndDuration,
+    calculateHaversineDistance,
+    getDistanceInKm
+};

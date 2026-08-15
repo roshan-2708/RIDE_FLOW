@@ -1,5 +1,8 @@
 const { Server } = require('socket.io');
 
+const prisma = require('../config/db');
+const { calculateHaversineDistance } = require('../services/map.services');
+
 // store connected users
 const connectedUsers = new Map();
 
@@ -60,6 +63,8 @@ const initializeSocket = (ioOrServer) => {
                 rideId,
                 driverInfo
             });
+            // Broadcast to drivers to remove this accepted ride from available list
+            io.emit('ride:removed', { rideId });
         });
 
         // driver arrived at pickup point
@@ -154,6 +159,8 @@ const initializeSocket = (ioOrServer) => {
                 message: `Ride cancelled : ${reason || 'Cancelled by user'}`,
                 rideId
             });
+            // Broadcast to drivers to remove cancelled ride from available list
+            io.emit('ride:removed', { rideId });
         });
 
         // Cash on delivery payment events
@@ -302,11 +309,71 @@ const initializeSocket = (ioOrServer) => {
     return io;
 };
 
-// get a driver's current location
+// get a driver's current location from socket tracking
 const getDriverLocation = (driverId) => driverLocations.get(driverId);
+
+// Notify drivers within 5km radius of ride pickup location
+const notifyNearbyDrivers = async (io, ride, maxRadiusKm = 5) => {
+    if (!io || !ride || typeof ride.pickupLat !== 'number' || typeof ride.pickupLng !== 'number') {
+        return;
+    }
+
+    try {
+        // Query approved and online drivers matching the ride's vehicle type
+        const drivers = await prisma.driverProfile.findMany({
+            where: {
+                status: 'APPROVED',
+                availability: 'ONLINE',
+                vehicleType: ride.vehicleType
+            },
+            include: {
+                user: {
+                    select: { id: true, name: true, phone: true }
+                }
+            }
+        });
+
+        drivers.forEach(driver => {
+            // Check live GPS from socket memory or fallback to database profile
+            const socketLoc = driverLocations.get(driver.userId);
+            const lat = socketLoc?.lat ?? driver.currentLat;
+            const lng = socketLoc?.lng ?? driver.currentLng;
+
+            if (typeof lat === 'number' && typeof lng === 'number') {
+                const { distance, duration } = calculateHaversineDistance(
+                    lat,
+                    lng,
+                    ride.pickupLat,
+                    ride.pickupLng
+                );
+
+                // Exclusively notify drivers within 5km radius
+                if (distance <= maxRadiusKm) {
+                    const driverSocketId = connectedUsers.get(driver.userId);
+                    if (driverSocketId) {
+                        io.to(driverSocketId).emit('ride:new-request', {
+                            ride,
+                            distanceToPickup: distance,
+                            etaToPickup: duration
+                        });
+                        console.log(`[GeoSocket] Dispatched ride ${ride.id} to nearby driver ${driver.userId} (${distance}km away)`);
+                    }
+                }
+            }
+        });
+
+        // Broadcast to admin radar map
+        io.emit('ride:created', ride);
+    } catch (err) {
+        console.error('Error notifying nearby drivers via socket:', err);
+    }
+};
 
 module.exports = initializeSocket;
 module.exports.initializeSocket = initializeSocket;
 module.exports.getDriverLocation = getDriverLocation;
+module.exports.notifyNearbyDrivers = notifyNearbyDrivers;
+module.exports.connectedUsers = connectedUsers;
+module.exports.driverLocations = driverLocations;
 
 

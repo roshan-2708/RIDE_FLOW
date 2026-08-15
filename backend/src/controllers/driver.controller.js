@@ -51,6 +51,12 @@ const acceptedRide = async (req, res) => {
             return updatedRide;
         });
 
+        // Broadcast to other drivers to remove this accepted ride from their 5km available list
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('ride:removed', { rideId });
+        }
+
         return res.status(200).json({
             success: true,
             message: 'Ride accepted!',
@@ -303,7 +309,6 @@ const updateAvailability = async (req, res) => {
 };
 
 // Driver Onboarding / Application submission
-// 2. Updated submitOnboarding controller:
 const submitOnboarding = async (req, res) => {
     try {
         const userId = req.userId || req.user?.userId;
