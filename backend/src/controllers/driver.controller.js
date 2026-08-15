@@ -1,5 +1,6 @@
 const prisma = require('../config/db');
 const { calculateFare } = require('../utils/fare.utils');
+const { uploadToCloudinary } = require('../config/cloudinary')
 
 // accepted ride
 const acceptedRide = async (req, res) => {
@@ -288,7 +289,7 @@ const updateAvailability = async (req, res) => {
         const updated = await prisma.driverProfile.update({
             where: { userId: driverId },
             data: dataToUpdate
-        }); 
+        });
 
         return res.status(200).json({
             success: true,
@@ -302,8 +303,8 @@ const updateAvailability = async (req, res) => {
 };
 
 // Driver Onboarding / Application submission
+// 2. Updated submitOnboarding controller:
 const submitOnboarding = async (req, res) => {
-
     try {
         const userId = req.userId || req.user?.userId;
         const {
@@ -318,7 +319,7 @@ const submitOnboarding = async (req, res) => {
         const plate = (vehiclePlate || vehicleLicensePlate || '').trim().toUpperCase();
         const licNum = (licenseNumber || '').trim().toUpperCase();
 
-        // Check required fields
+        // 1. Check required text fields
         if (!licNum || !vehicleType || !plate || !vehicleModel || !vehicleColor) {
             return res.status(400).json({
                 success: false,
@@ -326,7 +327,7 @@ const submitOnboarding = async (req, res) => {
             });
         }
 
-        // Validate vehicleType against Enum
+        // 2. Validate vehicleType
         const validVehicleTypes = ['AUTO', 'BIKE', 'SEDAN', 'SUV', 'LUXURY'];
         const normalizedVehicleType = vehicleType.toUpperCase();
         if (!validVehicleTypes.includes(normalizedVehicleType)) {
@@ -336,27 +337,62 @@ const submitOnboarding = async (req, res) => {
             });
         }
 
-        // Retrieve file paths from multer or body
-        const licensePhoto = req.files?.licensePhoto?.[0]
-            ? `/uploads/documents/${req.files.licensePhoto[0].filename}`
-            : req.body.licensePhoto;
+        // 3. Extract uploaded files from req.files
+        const licenseFile = req.files?.licensePhoto?.[0];
+        const rcFile = req.files?.rcPhoto?.[0] || req.files?.rc?.[0];
+        const vehicleFile = req.files?.vehiclePhoto?.[0];
 
-        const rcPhoto = (req.files?.rcPhoto?.[0] || req.files?.rc?.[0])
-            ? `/uploads/documents/${(req.files.rcPhoto?.[0] || req.files.rc?.[0]).filename}`
-            : (req.body.rcPhoto || req.body.rc);
-
-        const vehiclePhoto = req.files?.vehiclePhoto?.[0]
-            ? `/uploads/documents/${req.files.vehiclePhoto[0].filename}`
-            : req.body.vehiclePhoto;
-
-        if (!licensePhoto || !rcPhoto || !vehiclePhoto) {
+        // Check if files exist in request or if URLs were provided in body
+        if ((!licenseFile && !req.body.licensePhoto) || 
+            (!rcFile && !req.body.rcPhoto && !req.body.rc) || 
+            (!vehicleFile && !req.body.vehiclePhoto)) {
             return res.status(400).json({
                 success: false,
                 message: 'All document photos (licensePhoto, rcPhoto, vehiclePhoto) are required'
             });
         }
 
-        // Check unique licenseNumber or vehiclePlate used by another user
+        // 4. Upload files to Cloudinary in parallel
+        const uploadPromises = [];
+
+        // License photo
+        if (licenseFile) {
+            uploadPromises.push(
+                uploadToCloudinary(licenseFile.buffer, 'rideflow/documents/licenses')
+                    .then(res => ({ type: 'license', url: res.secure_url }))
+            );
+        }
+
+        // RC photo
+        if (rcFile) {
+            uploadPromises.push(
+                uploadToCloudinary(rcFile.buffer, 'rideflow/documents/rc')
+                    .then(res => ({ type: 'rc', url: res.secure_url }))
+            );
+        }
+
+        // Vehicle photo
+        if (vehicleFile) {
+            uploadPromises.push(
+                uploadToCloudinary(vehicleFile.buffer, 'rideflow/documents/vehicles')
+                    .then(res => ({ type: 'vehicle', url: res.secure_url }))
+            );
+        }
+
+        const uploadResults = await Promise.all(uploadPromises);
+
+        // Map uploaded URLs or fallback to existing URL strings
+        let licensePhoto = req.body.licensePhoto;
+        let rcPhoto = req.body.rcPhoto || req.body.rc;
+        let vehiclePhoto = req.body.vehiclePhoto;
+
+        uploadResults.forEach(item => {
+            if (item.type === 'license') licensePhoto = item.url;
+            if (item.type === 'rc') rcPhoto = item.url;
+            if (item.type === 'vehicle') vehiclePhoto = item.url;
+        });
+
+        // 5. Check uniqueness of license and plate
         const existingPlate = await prisma.driverProfile.findFirst({
             where: {
                 vehiclePlate: plate,
@@ -383,7 +419,7 @@ const submitOnboarding = async (req, res) => {
             });
         }
 
-        // Upsert driver profile
+        // 6. Upsert driver profile with secure Cloudinary URLs
         const profile = await prisma.driverProfile.upsert({
             where: { userId },
             create: {
@@ -413,7 +449,7 @@ const submitOnboarding = async (req, res) => {
             }
         });
 
-        // Ensure user role is DRIVER
+        // Ensure user role is updated to DRIVER
         await prisma.user.update({
             where: { id: userId },
             data: { role: 'DRIVER' }
@@ -421,7 +457,7 @@ const submitOnboarding = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: 'Driver onboarding submitted successfully! Your application is under admin review.',
+            message: 'Driver onboarding documents uploaded to Cloudinary successfully! Under review.',
             profile
         });
 
@@ -434,6 +470,7 @@ const submitOnboarding = async (req, res) => {
         });
     }
 };
+
 
 module.exports = {
     acceptRide: acceptedRide,
