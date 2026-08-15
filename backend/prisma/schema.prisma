@@ -104,6 +104,7 @@ model User {
   ratingsReceived Rating[]       @relation("RatingsReceived")
   otpCodes        OtpCode[]
   wallet          Wallet?
+  appRating       AppRating[]
 }
 
 model OtpCode {
@@ -171,7 +172,7 @@ model Ride {
   payments       Payment[]
   messages       Message[]
   tracking       RideTracking[]
-  rating         Rating?
+  rating         Rating[]
   earning        Earning?
 }
 
@@ -239,10 +240,14 @@ model Rating {
   toUserId   String
   rating     Int
   comment    String?
+  tags       String[] @default([])
   createdAt  DateTime @default(now())
   ride       Ride     @relation(fields: [rideId], references: [id])
   fromUser   User     @relation("RatingsGiven", fields: [fromUserId], references: [id])
   toUser     User     @relation("RatingsReceived", fields: [toUserId], references: [id])
+
+  @@unique([rideId, fromUserId])
+  @@index([toUserId])
 }
 
 model Earning {
@@ -275,4 +280,21 @@ model WalletTransaction {
   description String
   createdAt   DateTime @default(now())
   wallet      Wallet   @relation(fields: [walletId], references: [id])
+}
+
+model AppRating {
+  id         String   @id @default(uuid())
+  userId     String
+  role       UserRoles // RIDER or DRIVER
+  rating     Int      // 1 to 5 stars
+  category   String?  // e.g. "UI/UX", "Booking Experience", "Pricing", "Customer Support"
+  feedback   String?
+  platform   String?  // "WEB", "ANDROID", "IOS"
+  appVersion String?  // e.g. "1.0.0"
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // One active app review per user (can be updated over time)
+  @@unique([userId])
+  @@index([rating])
 }

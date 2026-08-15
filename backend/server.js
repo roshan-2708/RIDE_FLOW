@@ -12,6 +12,7 @@ const driverRoutes = require('./src/routes/driver.routes');
 const paymentRoutes = require('./src/routes/payment.routes');
 const chatRoutes = require('./src/routes/chat.routes');
 const adminRoutes = require('./src/routes/admin.routes');
+const ratingRoutes = require('./src/routes/rating.routes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -44,7 +45,7 @@ app.use('/api/driver', driverRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', adminRoutes);
-
+app.use('/api/ratings', ratingRoutes);
 
 
 
