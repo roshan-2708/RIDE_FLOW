@@ -2,6 +2,7 @@ const prisma = require('../config/db');
 const { getDistanceAndDuration, calculateHaversineDistance } = require('../services/map.services');
 const { calculateFare, getAllVehicleEstimates } = require('../utils/fare.utils');
 const { notifyNearbyDrivers, getDriverLocation } = require('../sockets');
+const { redisClient } = require('../config/redis');
 
 // get fare estimates
 const getFareEstimates = async (req, res) => {
@@ -114,6 +115,19 @@ const bookRide = async (req, res) => {
         const io = req.app.get('io');
         if (io) {
             notifyNearbyDrivers(io, ride, 5);
+        }
+
+        let nearbyDriverIds = [];
+        try {
+            nearbyDriverIds = await redisClient.georadius(
+                'active_drivers_spatial',
+                parseFloat(pickUpLng),
+                parseFloat(pickUpLat),
+                5, // Radius in kilometers
+                'km'
+            );
+        } catch (redisErr) {
+            console.error('Redis georadius error:', redisErr.message);
         }
 
         return res.status(201).json({

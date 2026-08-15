@@ -463,7 +463,7 @@ export default function RideDetailsPage() {
                 <div className="space-y-1">
                   <h3 className="text-lg font-bold text-white">Looking for Nearby Drivers...</h3>
                   <p className="text-xs text-gray-400">
-                    We are broadcasting your trip request to available drivers in your area.
+                    We are broadcasting your trip request exclusively to available drivers within a <strong className="text-orange-400">5 km radius</strong> of your pickup location.
                   </p>
                 </div>
 

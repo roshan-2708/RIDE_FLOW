@@ -23,6 +23,11 @@ const DashboardPage = () => {
   const [driverProfile, setDriverProfile] = useState(user?.driverProfile || null);
   const [isOnline, setIsOnline] = useState(user?.driverProfile?.availability === 'ONLINE');
   const [togglingAvailability, setTogglingAvailability] = useState(false);
+  const [driverCoords, setDriverCoords] = useState(
+    user?.driverProfile?.currentLat && user?.driverProfile?.currentLng
+      ? { lat: user.driverProfile.currentLat, lng: user.driverProfile.currentLng }
+      : null
+  );
 
   const [earning, setEarning] = useState({
     totalEarnings: 0,
@@ -55,6 +60,12 @@ const DashboardPage = () => {
       if (res.data?.profile) {
         setDriverProfile(res.data.profile);
         setIsOnline(res.data.profile.availability === 'ONLINE');
+        if (res.data.profile.currentLat && res.data.profile.currentLng) {
+          setDriverCoords({
+            lat: res.data.profile.currentLat,
+            lng: res.data.profile.currentLng,
+          });
+        }
       }
     } catch (error) {
       console.log('Profile fetch error:', error.message);
@@ -76,14 +87,20 @@ const DashboardPage = () => {
     }
   }, []);
 
-  const fetchAvailableRides = useCallback(async () => {
+  const fetchAvailableRides = useCallback(async (customCoords = null) => {
     try {
-      const res = await api.get('/rides/available');
+      const activeCoords = customCoords || driverCoords;
+      const params = {};
+      if (activeCoords?.lat && activeCoords?.lng) {
+        params.lat = activeCoords.lat;
+        params.lng = activeCoords.lng;
+      }
+      const res = await api.get('/rides/available', { params });
       setAvailableRides(res.data.rides || []);
     } catch (error) {
-      console.error('Failed to fetch available rides:', error);
+      console.error('Failed to fetch available rides within 5km:', error);
     }
-  }, []);
+  }, [driverCoords]);
 
   const loadAllData = useCallback(async (showToast = false) => {
     if (showToast) setIsRefreshing(true);
@@ -109,10 +126,42 @@ const DashboardPage = () => {
     }
   }, [user, isOnline, loadAllData, fetchAvailableRides]);
 
+  // Listen for real-time 5km ride requests and ride removals
+  useEffect(() => {
+    if (!socket || !isOnline) return;
+
+    const handleNewRequest = (data) => {
+      console.log('Socket ride:new-request received:', data);
+      const { ride, distanceToPickup, etaToPickup } = data;
+      setAvailableRides((prev) => {
+        if (prev.some((r) => r.id === ride.id)) return prev;
+        return [{ ...ride, distanceToPickup, etaToPickup }, ...prev];
+      });
+      toast(`🚖 New ride request (${distanceToPickup || '< 5'} km away)!`, {
+        icon: '📍',
+        duration: 6000,
+      });
+    };
+
+    const handleRideRemoved = ({ rideId }) => {
+      console.log('Socket ride:removed received:', rideId);
+      setAvailableRides((prev) => prev.filter((r) => r.id !== rideId));
+    };
+
+    socket.on('ride:new-request', handleNewRequest);
+    socket.on('ride:removed', handleRideRemoved);
+
+    return () => {
+      socket.off('ride:new-request', handleNewRequest);
+      socket.off('ride:removed', handleRideRemoved);
+    };
+  }, [socket, isOnline]);
+
   // Handle GPS location streaming when online
   useEffect(() => {
     if (isOnline && typeof window !== 'undefined' && 'geolocation' in navigator) {
       const emitLocation = (coords) => {
+        setDriverCoords({ lat: coords.latitude, lng: coords.longitude });
         if (socket && user?.id) {
           socket.emit('driver:update-location', {
             driverId: user.id,
@@ -505,16 +554,20 @@ const DashboardPage = () => {
 
         {/* ── Available Ride Requests Section ── */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
               <h2 className="text-xl font-bold text-white tracking-tight">Available Ride Requests</h2>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                ⚡ 5km Radar Radius
+              </span>
               {isOnline && driverStatus === 'APPROVED' && availableRides.length > 0 && (
                 <span className="px-2.5 py-0.5 rounded-full bg-orange-500 text-white text-xs font-bold animate-pulse">
                   {availableRides.length} LIVE
                 </span>
               )}
             </div>
-            <span className="text-xs text-gray-400 hidden sm:inline-block">Auto-updates every 15s</span>
+            <span className="text-xs text-gray-400">Live socket alerts within 5 km of your location</span>
           </div>
 
           {/* If NOT approved */}
@@ -537,7 +590,7 @@ const DashboardPage = () => {
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-white">You Are Currently Offline</h3>
                 <p className="text-sm text-gray-400 max-w-md mx-auto">
-                  Tap the <strong>&quot;GO ONLINE&quot;</strong> button above to start broadcasting your location and receive live ride requests.
+                  Tap the <strong>&quot;GO ONLINE&quot;</strong> button above to start broadcasting your location and receive live ride requests within 5km.
                 </p>
               </div>
               <button
@@ -552,9 +605,9 @@ const DashboardPage = () => {
             <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-10 text-center space-y-4 shadow-xl">
               <div className="text-5xl">📡</div>
               <div className="space-y-1">
-                <h3 className="text-lg font-bold text-white">No Pending Ride Requests</h3>
+                <h3 className="text-lg font-bold text-white">No Pending Ride Requests Nearby</h3>
                 <p className="text-sm text-gray-400 max-w-md mx-auto">
-                  You are currently online. When passengers nearby request a ride, they will appear here instantly.
+                  You are currently online. When passengers within a 5 km radius request a ride, they will appear here instantly.
                 </p>
               </div>
               <button
@@ -617,9 +670,17 @@ const DashboardPage = () => {
                     </div>
 
                     {/* Distance & Duration */}
-                    <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl text-xs text-gray-300 border border-white/5">
-                      <span>📍 Distance: <strong className="text-white">{ride.distance ? `${ride.distance} km` : 'N/A'}</strong></span>
-                      <span>⏱️ Est. Time: <strong className="text-white">{ride.duration ? `~${ride.duration} min` : 'N/A'}</strong></span>
+                    <div className="space-y-2">
+                      {ride.distanceToPickup !== undefined && (
+                        <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl text-xs text-emerald-300 font-semibold">
+                          <span>📍 Distance to Pickup:</span>
+                          <span className="text-emerald-400 font-bold">{ride.distanceToPickup} km away</span>
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl text-xs text-gray-300 border border-white/5">
+                        <span>🛣️ Trip Distance: <strong className="text-white">{ride.distance ? `${ride.distance} km` : 'N/A'}</strong></span>
+                        <span>⏱️ Est. Time: <strong className="text-white">{ride.duration ? `~${ride.duration} min` : 'N/A'}</strong></span>
+                      </div>
                     </div>
 
                   </div>

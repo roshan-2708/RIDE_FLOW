@@ -1,7 +1,8 @@
 const { Server } = require('socket.io');
-
+const { createAdapter } = require('@socket.io/redis-adapter');
 const prisma = require('../config/db');
 const { calculateHaversineDistance } = require('../services/map.services');
+const { pubClient, subClient, redisClient } = require('../config/redis');
 
 // store connected users
 const connectedUsers = new Map();
@@ -13,13 +14,15 @@ const initializeSocket = (ioOrServer) => {
     let io;
     if (ioOrServer instanceof Server || (ioOrServer && typeof ioOrServer.on === 'function')) {
         io = ioOrServer;
+        io.adapter(createAdapter(pubClient, subClient));
     } else {
         io = new Server(ioOrServer, {
             cors: {
                 origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-                methods: ['GET', 'POST'],
+                methods: ['GET', 'POST', 'PUT', 'DELETE'],
                 credentials: true
-            }
+            },
+            adapter: createAdapter(pubClient, subClient)
         });
     }
 
@@ -34,15 +37,29 @@ const initializeSocket = (ioOrServer) => {
         });
 
         // driver update gps location
-        socket.on('driver:update-location', (data) => {
+        socket.on('driver:update-location', async (data) => {
             const { driverId, lat, lng } = data;
+            const parsedLat = parseFloat(lat);
+            const parsedLng = parseFloat(lng);
 
-            // save driver location
-            driverLocations.set(driverId, { lat, lng, lastUpdate: new Date() });
+            // save driver location in memory
+            driverLocations.set(driverId, { lat: parsedLat, lng: parsedLng, lastUpdate: new Date() });
+
+            // save to Redis geospatial index
+            if (!isNaN(parsedLat) && !isNaN(parsedLng)) {
+                try {
+                    await redisClient.geoadd('active_drivers_spatial', parsedLng, parsedLat, driverId);
+                } catch (error) {
+                    console.error('Redis Geo Error:', error.message);
+                }
+            }
 
             // broadcast to all riders watching this driver
             socket.broadcast.emit('driver:location:update', {
-                driverId, lat, lng
+                driverId, lat: parsedLat, lng: parsedLng
+            });
+            socket.broadcast.emit('driver:location:updated', {
+                driverId, lat: parsedLat, lng: parsedLng
             });
         });
 
@@ -302,6 +319,33 @@ const initializeSocket = (ioOrServer) => {
                 socket.to(`ride_${rideId}`).emit('call:ended', {
                     fromUserId: socket.userId,
                 });
+            }
+        });
+
+        // Driver going offline -> remove from Redis spatial index
+        socket.on('driver:go-offline', async (driverId) => {
+            const id = driverId || socket.userId;
+            if (id) {
+                driverLocations.delete(id);
+                try {
+                    await redisClient.zrem('active_drivers_spatial', id);
+                    console.log(`Driver ${id} is now offline and removed from Redis spatial index`);
+                } catch (error) {
+                    console.error('Redis remove error:', error.message);
+                }
+            }
+        });
+
+        // Socket disconnect -> clean up connected user and Redis spatial index
+        socket.on('disconnect', async () => {
+            console.log(`socket disconnected: ${socket.id}`);
+            if (socket.userId) {
+                connectedUsers.delete(socket.userId);
+                try {
+                    await redisClient.zrem('active_drivers_spatial', socket.userId);
+                } catch (error) {
+                    console.error('Redis remove on disconnect error:', error.message);
+                }
             }
         });
 
