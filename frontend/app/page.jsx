@@ -3,6 +3,7 @@ import Image from 'next/image';
 import heroImage from '@/public/assets/heroImage.jpg';
 import quick from '@/public/assets/quick-pickup.jpg';
 import safty from '@/public/assets/safty.jpg';
+import Link from 'next/link';
 import support from '@/public/assets/support.jpg';
 
 const services = [
@@ -82,46 +83,14 @@ const page = () => {
             </p>
 
             {/* Search form */}
-            <form className="flex flex-col gap-4 max-w-md bg-white/5 backdrop-blur-sm border border-white/10 p-6 rounded-3xl shadow-2xl">
-
-              {/* Pickup */}
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-orange-400 text-base">📍</span>
-                <input
-                  type="text"
-                  placeholder="Pickup Location"
-                  className="w-full bg-white/10 border border-white/20 text-white placeholder-gray-400 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all duration-200"
-                />
-              </div>
-
-              {/* divider */}
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-white/10" />
-                <div className="w-7 h-7 rounded-full border border-white/20 bg-white/5 flex items-center justify-center">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 5v14M5 12l7 7 7-7" />
-                  </svg>
-                </div>
-                <div className="flex-1 h-px bg-white/10" />
-              </div>
-
-              {/* Dropoff */}
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-400 text-base">🏁</span>
-                <input
-                  type="text"
-                  placeholder="Dropoff Location"
-                  className="w-full bg-white/10 border border-white/20 text-white placeholder-gray-400 rounded-xl pl-10 pr-4 py-3.5 text-sm focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 transition-all duration-200"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="mt-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-4 rounded-xl transition-all duration-250 shadow-[0_6px_24px_rgba(255,90,0,0.4)] hover:shadow-[0_8px_30px_rgba(255,90,0,0.5)] hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm"
+            <div className="flex flex-col gap-4 max-w-md bg-white/5 backdrop-blur-sm border border-white/10 p-6 rounded-3xl shadow-2xl">
+              <Link
+                href="/book-ride"
+                className="mt-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-bold py-4 rounded-xl transition-all duration-250 shadow-[0_6px_24px_rgba(255,90,0,0.4)] hover:shadow-[0_8px_30px_rgba(255,90,0,0.5)] hover:-translate-y-0.5 flex items-center justify-center gap-2 text-sm text-center"
               >
-                🚀 Book Ride
-              </button>
-            </form>
+                🚀 Book Ride Now
+              </Link>
+            </div>
 
             {/* trust row */}
             <div className="flex items-center gap-4 text-sm text-gray-400">

@@ -117,19 +117,6 @@ const bookRide = async (req, res) => {
             notifyNearbyDrivers(io, ride, 5);
         }
 
-        let nearbyDriverIds = [];
-        try {
-            nearbyDriverIds = await redisClient.georadius(
-                'active_drivers_spatial',
-                parseFloat(pickUpLng),
-                parseFloat(pickUpLat),
-                5, // Radius in kilometers
-                'km'
-            );
-        } catch (redisErr) {
-            console.error('Redis georadius error:', redisErr.message);
-        }
-
         return res.status(201).json({
             success: true,
             message: 'Ride booked! Looking for drivers within 5km radius...',
